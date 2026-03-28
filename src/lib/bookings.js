@@ -110,6 +110,8 @@ export async function insertBookingWithFallback(supabaseClient, payload) {
     const combined = `${message} ${details}`.toLowerCase();
     const isColumnError = combined.includes('could not find') && combined.includes('column');
     const isTimeTypeError = combined.includes('invalid input syntax for type time');
+    const isMissingBookingDateError = combined.includes('null value in column')
+      && BOOKING_DATE_WRITE_KEYS.some((dateKey) => combined.includes(`"${dateKey}"`) || combined.includes(`'${dateKey}'`));
 
     if (isTimeTypeError && !useTimeFormat) {
       useTimeFormat = true;
@@ -117,7 +119,7 @@ export async function insertBookingWithFallback(supabaseClient, payload) {
       continue;
     }
 
-    if (!isColumnError) throw error;
+    if (!isColumnError && !isMissingBookingDateError) throw error;
   }
 
   throw new Error('Could not insert booking because no compatible start/end column names were found.');
