@@ -2,6 +2,7 @@ const START_KEYS = ['start_at', 'starts_at', 'start_time', 'start', 'start_datet
 const END_KEYS = ['end_at', 'ends_at', 'end_time', 'end', 'end_datetime'];
 const START_WRITE_KEYS = ['start_at', 'starts_at', 'start_time', 'start'];
 const END_WRITE_KEYS = ['end_at', 'ends_at', 'end_time', 'end'];
+const BOOKING_DATE_WRITE_KEYS = ['booking_date', 'date', 'booking_day'];
 
 function pickValue(record, keys) {
   for (const key of keys) {
@@ -29,7 +30,7 @@ export function normalizeBookings(bookings = []) {
 }
 
 function buildPayloadVariants(payload) {
-  const variants = [];
+  const timeVariants = [];
   for (const startKey of START_WRITE_KEYS) {
     for (const endKey of END_WRITE_KEYS) {
       const next = { ...payload };
@@ -37,10 +38,32 @@ function buildPayloadVariants(payload) {
       delete next.end_at;
       next[startKey] = payload.start_at;
       next[endKey] = payload.end_at;
-      variants.push(next);
+      timeVariants.push(next);
     }
   }
-  return variants;
+
+  const bookingDate = toPostgresDate(payload.start_at);
+  if (!bookingDate) return timeVariants;
+
+  const withDateVariants = [];
+  for (const candidate of timeVariants) {
+    withDateVariants.push(candidate);
+    for (const dateKey of BOOKING_DATE_WRITE_KEYS) {
+      withDateVariants.push({
+        ...candidate,
+        [dateKey]: bookingDate
+      });
+    }
+  }
+
+  return withDateVariants;
+}
+
+function toPostgresDate(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+
+  return date.toISOString().slice(0, 10);
 }
 
 function toPostgresTime(value) {
