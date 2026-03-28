@@ -99,6 +99,13 @@ async function insertBookingWithFallback(supabase, payload) {
 }
 
 export async function handler(event) {
+  console.log('[bookings] invocation', {
+    method: event.httpMethod,
+    path: event.path,
+    rawPath: event.rawUrl || event.rawPath || null,
+    body: event.body || null
+  });
+
   if (event.httpMethod !== 'POST') return json(405, { error: 'Method not allowed' });
 
   try {

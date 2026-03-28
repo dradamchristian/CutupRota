@@ -20,6 +20,8 @@ const el = {
   bookingForm: document.getElementById('bookingForm'),
   bookingMeta: document.getElementById('bookingMeta'),
   durationSelect: document.getElementById('durationSelect'),
+  bookingFormError: document.getElementById('bookingFormError'),
+  saveBooking: document.getElementById('saveBooking'),
   cancelBooking: document.getElementById('cancelBooking'),
   deleteDialog: document.getElementById('deleteDialog'),
   deleteForm: document.getElementById('deleteForm'),
@@ -50,6 +52,17 @@ function setMessage(text, type = 'info') {
 
 function setLoading(isLoading) {
   el.loading.classList.toggle('hidden', !isLoading);
+}
+
+function setBookingFormError(text) {
+  if (!text) {
+    el.bookingFormError.textContent = '';
+    el.bookingFormError.classList.add('hidden');
+    return;
+  }
+
+  el.bookingFormError.textContent = text;
+  el.bookingFormError.classList.remove('hidden');
 }
 
 async function loadAllData() {
@@ -214,6 +227,7 @@ function openBookingDialog({ benchId, dateKey, time }) {
   el.durationSelect.innerHTML = durations.map((d) => `<option value="${d}">${d} min</option>`).join('');
 
   el.bookingForm.reset();
+  setBookingFormError('');
   el.bookingDialog.showModal();
 }
 
@@ -226,7 +240,7 @@ function parseBenchId(rawBenchId) {
 
 async function createBooking(formData) {
   const slot = state.pendingSlot;
-  if (!slot) return;
+  if (!slot) throw new Error('No booking slot selected.');
 
   const duration = Number(formData.get('duration_minutes'));
   const start = combineDateTime(slot.dateKey, slot.time);
@@ -242,8 +256,7 @@ async function createBooking(formData) {
   });
 
   if (!canBookAt({ start, durationMins: duration, staticBlocks: day.blocks, workEnd })) {
-    setMessage('That duration is not available at this start time.', 'error');
-    return;
+    throw new Error('That duration is not available at this start time.');
   }
 
   const payload = {
@@ -259,6 +272,24 @@ async function createBooking(formData) {
 
   setMessage('Booking created.', 'success');
   await loadAllData();
+}
+
+async function handleBookingSave() {
+  setBookingFormError('');
+
+  if (!el.bookingForm.reportValidity()) {
+    setBookingFormError('Please complete all required fields before saving.');
+    return;
+  }
+
+  try {
+    await createBooking(new FormData(el.bookingForm));
+    el.bookingDialog.close();
+  } catch (err) {
+    const message = `Booking failed: ${err.message}`;
+    setBookingFormError(message);
+    setMessage(message, 'error');
+  }
 }
 
 async function deleteBooking() {
@@ -285,12 +316,11 @@ el.benchFilter.addEventListener('change', (event) => {
 
 el.bookingForm.addEventListener('submit', async (event) => {
   event.preventDefault();
-  try {
-    await createBooking(new FormData(el.bookingForm));
-    el.bookingDialog.close();
-  } catch (err) {
-    setMessage(`Booking failed: ${err.message}`, 'error');
-  }
+  await handleBookingSave();
+});
+
+el.saveBooking.addEventListener('click', async () => {
+  await handleBookingSave();
 });
 
 el.cancelBooking.addEventListener('click', () => el.bookingDialog.close());
