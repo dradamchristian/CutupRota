@@ -131,6 +131,12 @@ export async function handler(event) {
 
     return json(400, { error: 'Unknown action' });
   } catch (error) {
+    console.error('[bookings] failure', {
+      message: error?.message || null,
+      details: error?.details || null,
+      hint: error?.hint || null,
+      code: error?.code || null
+    });
     return json(500, { error: error.message || 'Bookings operation failed' });
   }
 }

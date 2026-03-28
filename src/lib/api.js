@@ -18,7 +18,9 @@ async function netlifyCall(path, payload) {
   const bases = getFunctionBases();
   let lastError = null;
 
-  for (const base of bases) {
+  for (let index = 0; index < bases.length; index += 1) {
+    const base = bases[index];
+    const isLastBase = index === bases.length - 1;
     const url = `${base}/${path}`;
 
     console.info('[api] Request starting', { url, payload });
@@ -36,7 +38,7 @@ async function netlifyCall(path, payload) {
       if (!response.ok) {
         const error = new Error(data.error || `Request failed: ${response.status}`);
         const isNotFound = response.status === 404;
-        if (isNotFound && base !== bases.at(-1)) {
+        if (isNotFound && !isLastBase) {
           console.warn('[api] Endpoint returned 404, trying fallback URL', { attemptedUrl: url });
           lastError = error;
           continue;
@@ -48,7 +50,9 @@ async function netlifyCall(path, payload) {
     } catch (error) {
       console.error('[api] Request failed', { url, error });
       lastError = error;
-      if (base === bases.at(-1)) throw error;
+      const isNetworkError = error instanceof TypeError;
+      if (!isNetworkError || isLastBase) throw error;
+      console.warn('[api] Network error, trying fallback URL', { attemptedUrl: url });
     }
   }
 

@@ -1,5 +1,6 @@
 const START_KEYS = ['start_at', 'starts_at', 'start_time', 'start', 'start_datetime'];
 const END_KEYS = ['end_at', 'ends_at', 'end_time', 'end', 'end_datetime'];
+const DATE_KEYS = ['booking_date', 'date', 'booking_day'];
 const START_WRITE_KEYS = ['start_at', 'starts_at', 'start_time', 'start'];
 const END_WRITE_KEYS = ['end_at', 'ends_at', 'end_time', 'end'];
 const BOOKING_DATE_WRITE_KEYS = ['booking_date', 'date', 'booking_day'];
@@ -12,14 +13,28 @@ function pickValue(record, keys) {
 }
 
 export function normalizeBooking(booking) {
-  const startAt = pickValue(booking, START_KEYS);
-  const endAt = pickValue(booking, END_KEYS);
+  const rawStart = pickValue(booking, START_KEYS);
+  const rawEnd = pickValue(booking, END_KEYS);
+  const bookingDate = pickValue(booking, DATE_KEYS);
+  const startAt = normalizeDateTime(rawStart, bookingDate);
+  const endAt = normalizeDateTime(rawEnd, bookingDate);
 
   return {
     ...booking,
     start_at: startAt,
     end_at: endAt
   };
+}
+
+function normalizeDateTime(value, bookingDate) {
+  if (!value) return null;
+  if (!bookingDate) return value;
+  if (!/^\d{2}:\d{2}(:\d{2})?$/.test(value)) return value;
+
+  const iso = `${bookingDate}T${value.length === 5 ? `${value}:00` : value}`;
+  const asDate = new Date(iso);
+  if (Number.isNaN(asDate.getTime())) return value;
+  return asDate.toISOString();
 }
 
 export function normalizeBookings(bookings = []) {
