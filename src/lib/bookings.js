@@ -50,22 +50,53 @@ function buildPayloadVariants(payload) {
   return variants;
 }
 
+function toPostgresTime(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+
+  return date.toISOString().slice(11, 19);
+}
+
 export async function insertBookingWithFallback(supabaseClient, payload) {
   const tried = new Set();
   let current = payload;
+  let useTimeFormat = false;
+  const candidates = [current, ...buildPayloadVariants(payload)];
 
-  for (const candidate of [current, ...buildPayloadVariants(payload)]) {
-    const key = JSON.stringify(Object.keys(candidate).sort());
+  for (let index = 0; index < candidates.length; index += 1) {
+    const candidate = candidates[index];
+    const candidateToInsert = useTimeFormat
+      ? {
+          ...candidate,
+          start_at: toPostgresTime(candidate.start_at),
+          end_at: toPostgresTime(candidate.end_at)
+        }
+      : candidate;
+
+    const key = JSON.stringify({
+      keys: Object.keys(candidateToInsert).sort(),
+      values: {
+        start_at: candidateToInsert.start_at,
+        end_at: candidateToInsert.end_at
+      }
+    });
     if (tried.has(key)) continue;
     tried.add(key);
 
-    const { error } = await supabaseClient.from('bookings').insert(candidate);
+    const { error } = await supabaseClient.from('bookings').insert(candidateToInsert);
     if (!error) return;
 
     const message = String(error.message || '');
     const details = String(error.details || '');
     const combined = `${message} ${details}`.toLowerCase();
     const isColumnError = combined.includes('could not find') && combined.includes('column');
+    const isTimeTypeError = combined.includes('invalid input syntax for type time');
+
+    if (isTimeTypeError && !useTimeFormat) {
+      useTimeFormat = true;
+      index = -1;
+      continue;
+    }
 
     if (!isColumnError) throw error;
 
