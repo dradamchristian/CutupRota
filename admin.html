@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Cut-Up Booking Admin</title>
+    <link rel="stylesheet" href="/src/styles/global.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <div>
+          <h1>Admin Console</h1>
+          <p class="muted">Settings, benches and blocked periods</p>
+        </div>
+        <a class="btn ghost" href="/">Back to bookings</a>
+      </header>
+
+      <section id="adminMessage" class="message hidden"></section>
+
+      <section id="pinSection" class="panel auth-panel">
+        <h2>Enter admin PIN</h2>
+        <form id="pinForm" class="stack">
+          <input id="pinInput" type="password" required minlength="4" maxlength="32" placeholder="PIN" />
+          <button class="btn primary" type="submit">Unlock Admin</button>
+        </form>
+      </section>
+
+      <main id="adminMain" class="hidden stack-lg">
+        <section class="panel">
+          <h2>App settings</h2>
+          <form id="settingsForm" class="settings-grid"></form>
+        </section>
+
+        <section class="panel">
+          <div class="section-title">
+            <h2>Benches</h2>
+            <button class="btn" id="addBench" type="button">Add bench</button>
+          </div>
+          <div id="benchesList" class="stack"></div>
+        </section>
+
+        <section class="panel">
+          <div class="section-title">
+            <h2>Blocked periods</h2>
+            <button class="btn" id="addBlocked" type="button">Add block</button>
+          </div>
+          <div id="blockedList" class="stack"></div>
+        </section>
+      </main>
+    </div>
+
+    <script type="module" src="/src/admin.js"></script>
+  </body>
+</html>
