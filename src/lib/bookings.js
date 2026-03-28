@@ -28,13 +28,6 @@ export function normalizeBookings(bookings = []) {
     .sort((a, b) => new Date(a.start_at) - new Date(b.start_at));
 }
 
-function replaceDateField(payload, keys, value) {
-  const next = { ...payload };
-  keys.forEach((key) => delete next[key]);
-  next[keys[0]] = value;
-  return next;
-}
-
 function buildPayloadVariants(payload) {
   const variants = [];
   for (const startKey of START_WRITE_KEYS) {
@@ -50,32 +43,58 @@ function buildPayloadVariants(payload) {
   return variants;
 }
 
+function toPostgresTime(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+
+  return date.toISOString().slice(11, 19);
+}
+
+function formatCandidateTimes(candidate) {
+  const next = { ...candidate };
+  const timeKeys = [...new Set([...START_KEYS, ...END_KEYS, ...START_WRITE_KEYS, ...END_WRITE_KEYS])];
+
+  timeKeys.forEach((key) => {
+    if (next[key]) {
+      next[key] = toPostgresTime(next[key]);
+    }
+  });
+
+  return next;
+}
+
 export async function insertBookingWithFallback(supabaseClient, payload) {
   const tried = new Set();
-  let current = payload;
+  let useTimeFormat = false;
+  const candidates = [payload, ...buildPayloadVariants(payload)];
 
-  for (const candidate of [current, ...buildPayloadVariants(payload)]) {
-    const key = JSON.stringify(Object.keys(candidate).sort());
+  for (let index = 0; index < candidates.length; index += 1) {
+    const candidate = candidates[index];
+    const candidateToInsert = useTimeFormat ? formatCandidateTimes(candidate) : candidate;
+
+    const key = JSON.stringify({
+      keys: Object.keys(candidateToInsert).sort(),
+      values: Object.entries(candidateToInsert).sort(([a], [b]) => a.localeCompare(b))
+    });
     if (tried.has(key)) continue;
     tried.add(key);
 
-    const { error } = await supabaseClient.from('bookings').insert(candidate);
+    const { error } = await supabaseClient.from('bookings').insert(candidateToInsert);
     if (!error) return;
 
     const message = String(error.message || '');
     const details = String(error.details || '');
     const combined = `${message} ${details}`.toLowerCase();
     const isColumnError = combined.includes('could not find') && combined.includes('column');
+    const isTimeTypeError = combined.includes('invalid input syntax for type time');
+
+    if (isTimeTypeError && !useTimeFormat) {
+      useTimeFormat = true;
+      index = -1;
+      continue;
+    }
 
     if (!isColumnError) throw error;
-
-    if (combined.includes('start')) {
-      current = replaceDateField(current, START_WRITE_KEYS, payload.start_at);
-    }
-
-    if (combined.includes('end')) {
-      current = replaceDateField(current, END_WRITE_KEYS, payload.end_at);
-    }
   }
 
   throw new Error('Could not insert booking because no compatible start/end column names were found.');
