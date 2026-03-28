@@ -186,7 +186,7 @@ function renderBenchDayColumn(dateKey, bench) {
 function bindBoardActions(dates) {
   el.board.querySelectorAll('[data-action="open-book"]').forEach((button) => {
     button.addEventListener('click', () => {
-      const benchId = Number(button.dataset.bench);
+      const benchId = parseBenchId(button.dataset.bench);
       const dateKey = button.dataset.date;
       const time = button.dataset.time;
       openBookingDialog({ benchId, dateKey, time });
@@ -214,6 +214,13 @@ function openBookingDialog({ benchId, dateKey, time }) {
 
   el.bookingForm.reset();
   el.bookingDialog.showModal();
+}
+
+function parseBenchId(rawBenchId) {
+  if (typeof rawBenchId !== 'string') return rawBenchId;
+  const trimmed = rawBenchId.trim();
+  if (/^-?\d+$/.test(trimmed)) return Number(trimmed);
+  return trimmed;
 }
 
 async function createBooking(formData) {
