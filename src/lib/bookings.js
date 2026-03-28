@@ -1,5 +1,6 @@
 const START_KEYS = ['start_at', 'starts_at', 'start_time', 'start', 'start_datetime'];
 const END_KEYS = ['end_at', 'ends_at', 'end_time', 'end', 'end_datetime'];
+const DATE_KEYS = ['booking_date', 'date', 'booking_day'];
 const START_WRITE_KEYS = ['start_at', 'starts_at', 'start_time', 'start'];
 const END_WRITE_KEYS = ['end_at', 'ends_at', 'end_time', 'end'];
 const BOOKING_DATE_WRITE_KEYS = ['booking_date', 'date', 'booking_day'];
@@ -12,8 +13,11 @@ function pickValue(record, keys) {
 }
 
 export function normalizeBooking(booking) {
-  const startAt = pickValue(booking, START_KEYS);
-  const endAt = pickValue(booking, END_KEYS);
+  const dateValue = pickValue(booking, DATE_KEYS);
+  const startRaw = pickValue(booking, START_KEYS);
+  const endRaw = pickValue(booking, END_KEYS);
+  const startAt = combineDateAndTime(dateValue, startRaw);
+  const endAt = combineDateAndTime(dateValue, endRaw);
 
   return {
     ...booking,
@@ -27,6 +31,20 @@ export function normalizeBookings(bookings = []) {
     .map(normalizeBooking)
     .filter((booking) => booking.start_at && booking.end_at)
     .sort((a, b) => new Date(a.start_at) - new Date(b.start_at));
+}
+
+function combineDateAndTime(dateValue, timeValue) {
+  if (!timeValue) return null;
+
+  if (typeof timeValue === 'string' && timeValue.includes('T')) return timeValue;
+
+  if (!dateValue) return timeValue;
+
+  const timeText = String(timeValue).trim().slice(0, 8);
+  const dateText = String(dateValue).trim().slice(0, 10);
+  if (!timeText || !dateText) return timeValue;
+
+  return `${dateText}T${timeText}`;
 }
 
 function buildPayloadVariants(payload) {
