@@ -16,6 +16,37 @@ function toPostgresTime(value) {
   return date.toISOString().slice(11, 19);
 }
 
+function normalizeText(value) {
+  if (typeof value !== 'string') return '';
+  return value.trim();
+}
+
+async function findExactBookingMatch(supabase, booking) {
+  const bookingDate = toPostgresDate(booking?.start_at);
+  const startTime = toPostgresTime(booking?.start_at);
+  const endTime = toPostgresTime(booking?.end_at);
+  if (!booking?.bench_id || !bookingDate || !startTime || !endTime) return null;
+
+  const { data, error } = await supabase
+    .from('bookings')
+    .select('id, bench_id, booking_date, start_time, end_time, booked_by, specialties, notes')
+    .eq('bench_id', booking.bench_id)
+    .eq('booking_date', bookingDate)
+    .eq('start_time', startTime)
+    .eq('end_time', endTime)
+    .limit(1)
+    .maybeSingle();
+
+  if (error) throw error;
+  if (!data) return null;
+
+  const sameBooker = normalizeText(data.booked_by) === normalizeText(booking.booked_by);
+  const sameSpecialties = normalizeText(data.specialties) === normalizeText(booking.specialties);
+  const sameNotes = normalizeText(data.notes) === normalizeText(booking.notes);
+
+  return sameBooker && sameSpecialties && sameNotes ? data : null;
+}
+
 function formatCandidateTimes(candidate) {
   const next = { ...candidate };
   const timeKeys = [...new Set([...START_WRITE_KEYS, ...END_WRITE_KEYS])];
@@ -139,6 +170,15 @@ export async function handler(event) {
     });
 
     if (error?.code === '23P01') {
+      const { action, booking } = parseBody(event);
+      if (action === 'create') {
+        const supabase = getAdminClient();
+        const existing = await findExactBookingMatch(supabase, booking);
+        if (existing) {
+          return json(200, { ok: true, deduplicated: true, booking_id: existing.id });
+        }
+      }
+
       return json(409, { error: 'That slot was just booked already. Please refresh and choose another time.' });
     }
 
