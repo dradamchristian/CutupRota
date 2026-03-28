@@ -2,6 +2,7 @@ import { supabase } from './lib/supabaseClient.js';
 import { buildVisibleDates, combineDateTime, formatDateKey } from './lib/date.js';
 import { canBookAt, buildDayBlocks, getEnabledDurations } from './lib/slotBuilder.js';
 import { escapeHtml, fmtDateLabel, fmtTime } from './lib/format.js';
+import { normalizeBookings } from './lib/bookings.js';
 
 const el = {
   board: document.getElementById('board'),
@@ -57,7 +58,7 @@ async function loadAllData() {
     const [settingsRes, benchesRes, bookingsRes, blockedRes] = await Promise.all([
       supabase.from('app_settings').select('*').limit(1).single(),
       supabase.from('benches').select('*').order('display_order', { ascending: true }),
-      supabase.from('bookings').select('*').order('start_at', { ascending: true }),
+      supabase.from('bookings').select('*'),
       supabase.from('blocked_periods').select('*').order('start_time', { ascending: true })
     ]);
 
@@ -69,7 +70,7 @@ async function loadAllData() {
 
     state.settings = settingsRes.data;
     state.benches = benchesRes.data.filter((b) => b.active);
-    state.bookings = bookingsRes.data;
+    state.bookings = normalizeBookings(bookingsRes.data);
     state.blockedPeriods = blockedRes.data;
 
     renderBenchFilter();
