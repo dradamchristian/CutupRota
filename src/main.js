@@ -2,6 +2,7 @@ import { supabase } from './lib/supabaseClient.js';
 import { buildVisibleDates, combineDateTime, formatDateKey } from './lib/date.js';
 import { canBookAt, buildDayBlocks, getEnabledDurations } from './lib/slotBuilder.js';
 import { escapeHtml, fmtDateLabel, fmtTime } from './lib/format.js';
+import { normalizeBookings } from './lib/bookings.js';
 
 const el = {
   board: document.getElementById('board'),
@@ -57,7 +58,7 @@ async function loadAllData() {
     const [settingsRes, benchesRes, bookingsRes, blockedRes] = await Promise.all([
       supabase.from('app_settings').select('*').limit(1).single(),
       supabase.from('benches').select('*').order('display_order', { ascending: true }),
-      supabase.from('bookings').select('*').order('start_at', { ascending: true }),
+      supabase.from('bookings').select('*'),
       supabase.from('blocked_periods').select('*').order('start_time', { ascending: true })
     ]);
 
@@ -69,7 +70,7 @@ async function loadAllData() {
 
     state.settings = settingsRes.data;
     state.benches = benchesRes.data.filter((b) => b.active);
-    state.bookings = bookingsRes.data;
+    state.bookings = normalizeBookings(bookingsRes.data);
     state.blockedPeriods = blockedRes.data;
 
     renderBenchFilter();
@@ -202,6 +203,36 @@ function bindBoardActions(dates) {
   });
 }
 
+
+async function insertBookingWithKnownTimestampColumns(basePayload, startIso, endIso) {
+  const timestampPairs = [
+    ['start_at', 'end_at'],
+    ['starts_at', 'ends_at'],
+    ['start_time', 'end_time'],
+    ['start', 'end']
+  ];
+
+  let lastError = null;
+
+  for (const [startKey, endKey] of timestampPairs) {
+    const payload = {
+      ...basePayload,
+      [startKey]: startIso,
+      [endKey]: endIso
+    };
+
+    const { error } = await supabase.from('bookings').insert(payload);
+    if (!error) return;
+
+    const missingColumnError = /Could not find the '.+' column of 'bookings'/i.test(error.message || '');
+    if (!missingColumnError) throw error;
+
+    lastError = error;
+  }
+
+  throw lastError || new Error('Unable to determine booking timestamp column names.');
+}
+
 function openBookingDialog({ benchId, dateKey, time }) {
   state.pendingSlot = { benchId, dateKey, time };
   const bench = state.benches.find((b) => b.id === benchId);
@@ -240,13 +271,10 @@ async function createBooking(formData) {
     bench_id: slot.benchId,
     booked_by: formData.get('booked_by'),
     specialties: formData.get('specialties'),
-    notes: formData.get('notes'),
-    start_at: start.toISOString(),
-    end_at: end.toISOString()
+    notes: formData.get('notes')
   };
 
-  const { error } = await supabase.from('bookings').insert(payload);
-  if (error) throw error;
+  await insertBookingWithKnownTimestampColumns(payload, start.toISOString(), end.toISOString());
 
   setMessage('Booking created.', 'success');
   await loadAllData();
