@@ -1,8 +1,9 @@
 import { supabase } from './lib/supabaseClient.js';
+import { saveBooking } from './lib/api.js';
 import { buildVisibleDates, combineDateTime, formatDateKey } from './lib/date.js';
 import { canBookAt, buildDayBlocks, getEnabledDurations } from './lib/slotBuilder.js';
 import { escapeHtml, fmtDateLabel, fmtTime } from './lib/format.js';
-import { insertBookingWithFallback, normalizeBookings } from './lib/bookings.js';
+import { normalizeBookings } from './lib/bookings.js';
 import { normalizeBenches } from './lib/benches.js';
 
 const el = {
@@ -254,7 +255,7 @@ async function createBooking(formData) {
     end_at: end.toISOString()
   };
 
-  await insertBookingWithFallback(supabase, payload);
+  await saveBooking({ action: 'create', booking: payload });
 
   setMessage('Booking created.', 'success');
   await loadAllData();
@@ -262,8 +263,7 @@ async function createBooking(formData) {
 
 async function deleteBooking() {
   if (!state.pendingDelete) return;
-  const { error } = await supabase.from('bookings').delete().eq('id', state.pendingDelete.id);
-  if (error) throw error;
+  await saveBooking({ action: 'delete', id: state.pendingDelete.id });
   setMessage('Booking deleted.', 'success');
   await loadAllData();
 }
