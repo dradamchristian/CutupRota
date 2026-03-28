@@ -1,5 +1,41 @@
 import { getAdminClient, json, parseBody } from './_supabaseAdmin.js';
 
+function isMissingBenchColumnError(message = '') {
+  return (
+    /column "[^"]+" of relation "benches" does not exist/i.test(message) ||
+    /Could not find the "[^"]+" column of "benches"/i.test(message)
+  );
+}
+
+function buildBenchPayload(bench, activeKey = 'active') {
+  const payload = {
+    id: bench.id,
+    name: bench.name,
+    display_order: bench.display_order ?? 0
+  };
+
+  if (typeof bench.active === 'boolean') payload[activeKey] = bench.active;
+  return payload;
+}
+
+async function upsertBenchWithActiveFallback(supabase, bench) {
+  const keys = ['active', 'is_active', 'enabled'];
+  let lastError = null;
+
+  for (const key of keys) {
+    const payload = buildBenchPayload(bench, key);
+    const { error } = await supabase.from('benches').upsert(payload, { onConflict: 'id' });
+    if (!error) return;
+
+    lastError = error;
+    if (!isMissingBenchColumnError(error.message || '')) {
+      throw error;
+    }
+  }
+
+  if (lastError) throw lastError;
+}
+
 export async function handler(event) {
   if (event.httpMethod !== 'POST') return json(405, { error: 'Method not allowed' });
 
@@ -9,8 +45,7 @@ export async function handler(event) {
 
     if (action === 'upsert') {
       if (!bench?.name) return json(400, { error: 'Bench name required' });
-      const { error } = await supabase.from('benches').upsert(bench, { onConflict: 'id' });
-      if (error) throw error;
+      await upsertBenchWithActiveFallback(supabase, bench);
       return json(200, { ok: true });
     }
 

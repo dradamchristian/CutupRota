@@ -3,6 +3,7 @@ import { buildVisibleDates, combineDateTime, formatDateKey } from './lib/date.js
 import { canBookAt, buildDayBlocks, getEnabledDurations } from './lib/slotBuilder.js';
 import { escapeHtml, fmtDateLabel, fmtTime } from './lib/format.js';
 import { normalizeBookings } from './lib/bookings.js';
+import { normalizeBenches } from './lib/benches.js';
 
 const el = {
   board: document.getElementById('board'),
@@ -69,7 +70,7 @@ async function loadAllData() {
     if (errors.length) throw errors[0];
 
     state.settings = settingsRes.data;
-    state.benches = benchesRes.data.filter((b) => b.active);
+    state.benches = normalizeBenches(benchesRes.data).filter((b) => b.active);
     state.bookings = normalizeBookings(bookingsRes.data);
     state.blockedPeriods = blockedRes.data;
 

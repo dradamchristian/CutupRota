@@ -1,6 +1,7 @@
 import { supabase } from './lib/supabaseClient.js';
 import { saveBench, saveBlockedPeriod, updateSettings, verifyAdminPin } from './lib/api.js';
 import { escapeHtml } from './lib/format.js';
+import { createBenchPayload, normalizeBenches } from './lib/benches.js';
 
 const el = {
   message: document.getElementById('adminMessage'),
@@ -39,7 +40,7 @@ async function loadAdminData() {
   if (blockedRes.error) throw blockedRes.error;
 
   state.settings = settingsRes.data;
-  state.benches = benchesRes.data;
+  state.benches = normalizeBenches(benchesRes.data);
   state.blockedPeriods = blockedRes.data;
   renderAll();
 }
@@ -93,17 +94,21 @@ function renderBenches() {
       event.preventDefault();
       const id = Number(form.dataset.benchId);
       const data = new FormData(form);
-      await saveBench({
-        action: 'upsert',
-        bench: {
-          id,
-          name: data.get('name'),
-          display_order: Number(data.get('display_order') || 0),
-          active: data.get('active') === 'on'
-        }
-      });
-      flash('Bench updated.', 'success');
-      await loadAdminData();
+      try {
+        await saveBench({
+          action: 'upsert',
+          bench: createBenchPayload({
+            id,
+            name: data.get('name'),
+            display_order: Number(data.get('display_order') || 0),
+            _activeKey: state.benches.find((b) => b.id === id)?._activeKey || 'active'
+          }, data.get('active') === 'on')
+        });
+        flash('Bench updated.', 'success');
+        await loadAdminData();
+      } catch (err) {
+        flash(`Bench save failed: ${err.message}`, 'error');
+      }
     });
   });
 
@@ -218,7 +223,11 @@ el.addBench.addEventListener('click', async () => {
   try {
     await saveBench({
       action: 'upsert',
-      bench: { name: `Bench ${state.benches.length + 1}`, display_order: state.benches.length + 1, active: true }
+      bench: createBenchPayload({
+        name: `Bench ${state.benches.length + 1}`,
+        display_order: state.benches.length + 1,
+        _activeKey: state.benches[0]?._activeKey || 'active'
+      }, true)
     });
     flash('Bench added.', 'success');
     await loadAdminData();
