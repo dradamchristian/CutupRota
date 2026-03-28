@@ -148,7 +148,21 @@ export async function handler(event) {
         return json(400, { error: 'Missing required booking fields.' });
       }
 
-      await insertBookingWithFallback(supabase, booking);
+      try {
+        await insertBookingWithFallback(supabase, booking);
+      } catch (error) {
+        if (error?.code === '23P01') {
+          const existing = await findExactBookingMatch(supabase, booking);
+          if (existing) {
+            return json(200, { ok: true, deduplicated: true, booking_id: existing.id });
+          }
+
+          return json(409, { error: 'That slot was just booked already. Please refresh and choose another time.' });
+        }
+
+        throw error;
+      }
+
       return json(200, { ok: true });
     }
 
@@ -168,19 +182,6 @@ export async function handler(event) {
       hint: error?.hint || null,
       code: error?.code || null
     });
-
-    if (error?.code === '23P01') {
-      const { action, booking } = parseBody(event);
-      if (action === 'create') {
-        const supabase = getAdminClient();
-        const existing = await findExactBookingMatch(supabase, booking);
-        if (existing) {
-          return json(200, { ok: true, deduplicated: true, booking_id: existing.id });
-        }
-      }
-
-      return json(409, { error: 'That slot was just booked already. Please refresh and choose another time.' });
-    }
 
     return json(500, { error: error.message || 'Bookings operation failed' });
   }
