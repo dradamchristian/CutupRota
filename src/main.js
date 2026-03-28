@@ -2,7 +2,7 @@ import { supabase } from './lib/supabaseClient.js';
 import { buildVisibleDates, combineDateTime, formatDateKey } from './lib/date.js';
 import { canBookAt, buildDayBlocks, getEnabledDurations } from './lib/slotBuilder.js';
 import { escapeHtml, fmtDateLabel, fmtTime } from './lib/format.js';
-import { normalizeBookings } from './lib/bookings.js';
+import { insertBookingWithFallback, normalizeBookings } from './lib/bookings.js';
 import { normalizeBenches } from './lib/benches.js';
 
 const el = {
@@ -247,8 +247,7 @@ async function createBooking(formData) {
     end_at: end.toISOString()
   };
 
-  const { error } = await supabase.from('bookings').insert(payload);
-  if (error) throw error;
+  await insertBookingWithFallback(supabase, payload);
 
   setMessage('Booking created.', 'success');
   await loadAllData();
