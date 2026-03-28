@@ -78,6 +78,12 @@ function buildPayloadVariants(payload) {
 }
 
 function toPostgresDate(value) {
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    const match = trimmed.match(/^(\d{4}-\d{2}-\d{2})/);
+    if (match) return match[1];
+  }
+
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return null;
 
@@ -85,6 +91,21 @@ function toPostgresDate(value) {
 }
 
 function toPostgresTime(value) {
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    const match = trimmed.match(/(?:T|\s)(\d{2}:\d{2}(?::\d{2})?)/);
+    if (match) {
+      const parts = match[1].split(':');
+      const hours = parts[0] || '00';
+      const minutes = parts[1] || '00';
+      const seconds = parts[2] || '00';
+      return `${hours}:${minutes}:${seconds}`;
+    }
+
+    const hhmmss = trimmed.match(/^(\d{2}:\d{2}(?::\d{2})?)$/);
+    if (hhmmss) return hhmmss[1].length === 5 ? `${hhmmss[1]}:00` : hhmmss[1];
+  }
+
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
 

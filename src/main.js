@@ -1,6 +1,6 @@
 import { supabase } from './lib/supabaseClient.js';
 import { saveBooking } from './lib/api.js';
-import { buildVisibleDates, combineDateTime, formatDateKey } from './lib/date.js';
+import { buildVisibleDates, combineDateTime, formatDateKey, formatLocalDateTime } from './lib/date.js';
 import { canBookAt, buildDayBlocks, getEnabledDurations } from './lib/slotBuilder.js';
 import { escapeHtml, fmtDateLabel, fmtTime } from './lib/format.js';
 import { normalizeBookings } from './lib/bookings.js';
@@ -272,8 +272,8 @@ async function createBooking(formData) {
     booked_by: formData.get('booked_by'),
     specialties: formData.get('specialties'),
     notes: formData.get('notes'),
-    start_at: start.toISOString(),
-    end_at: end.toISOString()
+    start_at: formatLocalDateTime(start),
+    end_at: formatLocalDateTime(end)
   };
 
   await saveBooking({ action: 'create', booking: payload });
