@@ -99,6 +99,13 @@ async function insertBookingWithFallback(supabase, payload) {
 }
 
 export async function handler(event) {
+  console.log('[bookings] invocation', {
+    method: event.httpMethod,
+    path: event.path,
+    rawPath: event.rawUrl || event.rawPath || null,
+    body: event.body || null
+  });
+
   if (event.httpMethod !== 'POST') return json(405, { error: 'Method not allowed' });
 
   try {
@@ -124,6 +131,17 @@ export async function handler(event) {
 
     return json(400, { error: 'Unknown action' });
   } catch (error) {
+    console.error('[bookings] failure', {
+      message: error?.message || null,
+      details: error?.details || null,
+      hint: error?.hint || null,
+      code: error?.code || null
+    });
+
+    if (error?.code === '23P01') {
+      return json(409, { error: 'That slot was just booked already. Please refresh and choose another time.' });
+    }
+
     return json(500, { error: error.message || 'Bookings operation failed' });
   }
 }
