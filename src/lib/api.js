@@ -31,3 +31,7 @@ export function saveBench(payload) {
 export function saveBlockedPeriod(payload) {
   return netlifyCall('blocked-periods', payload);
 }
+
+export function saveBooking(payload) {
+  return netlifyCall('bookings', payload);
+}
