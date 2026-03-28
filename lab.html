@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Lab Display - Cut-Up Bookings</title>
+    <link rel="stylesheet" href="/src/styles/global.css" />
+  </head>
+  <body class="lab-body">
+    <div class="app-shell lab-shell">
+      <header class="topbar">
+        <div>
+          <h1>Today’s Cut-Up Bookings</h1>
+          <p id="labSub" class="muted"></p>
+        </div>
+        <a class="btn ghost" href="/">Back</a>
+      </header>
+
+      <section id="labError" class="message hidden"></section>
+      <section id="labLoading" class="panel">Loading lab display…</section>
+      <section id="labBoard" class="board lab-board"></section>
+    </div>
+
+    <script type="module" src="/src/lab.js"></script>
+  </body>
+</html>

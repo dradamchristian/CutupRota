@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Cut-Up Slot Booking</title>
+    <link rel="stylesheet" href="/src/styles/global.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <div>
+          <h1>Cut-Up Booking</h1>
+          <p class="muted">Consultant & trainee bench scheduling</p>
+        </div>
+        <div class="topbar-actions">
+          <label>
+            Bench
+            <select id="benchFilter"></select>
+          </label>
+          <a class="btn ghost" href="/lab.html">Lab View</a>
+          <a class="btn ghost" href="/admin.html">Admin</a>
+        </div>
+      </header>
+
+      <main>
+        <section class="panel controls" id="controls">
+          <button class="btn" id="prevDays">← Earlier</button>
+          <span id="rangeLabel" class="range-label"></span>
+          <button class="btn" id="nextDays">Later →</button>
+          <div class="legend">
+            <span><i class="dot free"></i>Available</span>
+            <span><i class="dot booked"></i>Booked</span>
+            <span><i class="dot blocked"></i>Blocked</span>
+          </div>
+        </section>
+
+        <section id="message" class="message hidden"></section>
+        <section id="loading" class="panel">Loading booking board...</section>
+        <section id="error" class="panel hidden"></section>
+        <section id="empty" class="panel hidden">No benches or no days to show.</section>
+        <section id="board" class="board"></section>
+      </main>
+    </div>
+
+    <dialog id="bookingDialog" class="modal">
+      <form method="dialog" class="modal-content" id="bookingForm">
+        <h2>Book bench time</h2>
+        <p id="bookingMeta" class="muted"></p>
+
+        <label>Booked by
+          <input required name="booked_by" maxlength="80" placeholder="e.g. AB / Dr Khan" />
+        </label>
+
+        <label>Specialties
+          <input required name="specialties" maxlength="120" placeholder="e.g. GI, Breast" />
+        </label>
+
+        <label>Duration
+          <select name="duration_minutes" id="durationSelect" required></select>
+        </label>
+
+        <label>Notes (optional)
+          <textarea name="notes" rows="3" maxlength="400"></textarea>
+        </label>
+
+        <div class="modal-actions">
+          <button type="button" class="btn ghost" id="cancelBooking">Cancel</button>
+          <button type="submit" class="btn primary" id="saveBooking">Save booking</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="deleteDialog" class="modal">
+      <form method="dialog" class="modal-content" id="deleteForm">
+        <h2>Delete booking?</h2>
+        <p id="deleteMeta"></p>
+        <div class="modal-actions">
+          <button type="button" class="btn ghost" id="cancelDelete">Cancel</button>
+          <button type="submit" class="btn danger" id="confirmDelete">Delete</button>
+        </div>
+      </form>
+    </dialog>
+
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
