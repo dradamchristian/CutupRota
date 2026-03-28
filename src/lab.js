@@ -2,6 +2,8 @@ import { supabase } from './lib/supabaseClient.js';
 import { buildVisibleDates, formatDateKey } from './lib/date.js';
 import { buildDayBlocks } from './lib/slotBuilder.js';
 import { escapeHtml, fmtDateLong, fmtTime } from './lib/format.js';
+import { normalizeBookings } from './lib/bookings.js';
+import { normalizeBenches } from './lib/benches.js';
 
 const el = {
   sub: document.getElementById('labSub'),
@@ -18,8 +20,8 @@ async function loadLabView() {
     el.loading.classList.remove('hidden');
     const [settingsRes, benchesRes, bookingsRes, blockedRes] = await Promise.all([
       supabase.from('app_settings').select('*').limit(1).single(),
-      supabase.from('benches').select('*').eq('active', true).order('display_order', { ascending: true }),
-      supabase.from('bookings').select('*').order('start_at', { ascending: true }),
+      supabase.from('benches').select('*').order('display_order', { ascending: true }),
+      supabase.from('bookings').select('*'),
       supabase.from('blocked_periods').select('*')
     ]);
 
@@ -29,9 +31,10 @@ async function loadLabView() {
     if (blockedRes.error) throw blockedRes.error;
 
     const settings = settingsRes.data;
-    const benches = benchParam
-      ? benchesRes.data.filter((b) => String(b.id) === String(benchParam))
-      : benchesRes.data;
+    const bookings = normalizeBookings(bookingsRes.data);
+    const benches = normalizeBenches(benchesRes.data)
+      .filter((b) => b.active)
+      .filter((b) => (benchParam ? String(b.id) === String(benchParam) : true));
 
     const dates = buildVisibleDates({
       daysAhead: Math.min(Number(settings.booking_days_ahead || 5), 3),
@@ -49,7 +52,7 @@ async function loadLabView() {
         const day = buildDayBlocks({
           dateKey,
           benchId: bench.id,
-          bookings: bookingsRes.data,
+          bookings,
           blockedPeriods: blockedRes.data,
           settings
         });
