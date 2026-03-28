@@ -41,6 +41,8 @@ async function netlifyCall(path, payload) {
           lastError = error;
           continue;
         }
+
+        error.skipFallback = true;
         throw error;
       }
 
@@ -48,6 +50,7 @@ async function netlifyCall(path, payload) {
     } catch (error) {
       console.error('[api] Request failed', { url, error });
       lastError = error;
+      if (error?.skipFallback) throw error;
       if (base === bases.at(-1)) throw error;
     }
   }
