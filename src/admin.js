@@ -135,12 +135,9 @@ function blockedRow(block) {
     <form class="row" data-block-id="${block.id}">
       <select name="block_type">
         <option value="date" ${block.block_type === 'date' ? 'selected' : ''}>One-off date</option>
-        <option value="weekday" ${block.block_type === 'weekday' ? 'selected' : ''}>Recurring weekday</option>
+        <option value="weekday" ${block.block_type === 'weekday' ? 'selected' : ''}>Recurring every day</option>
       </select>
       <input type="date" name="block_date" value="${escapeHtml(block.block_date || '')}" />
-      <select name="weekday">
-        ${[0,1,2,3,4,5,6].map((d) => `<option value="${d}" ${Number(block.weekday) === d ? 'selected' : ''}>${d}</option>`).join('')}
-      </select>
       <select name="bench_id">
         <option value="">All benches</option>
         ${state.benches.map((b) => `<option value="${b.id}" ${String(block.bench_id) === String(b.id) ? 'selected' : ''}>${escapeHtml(b.name)}</option>`).join('')}
@@ -168,7 +165,7 @@ function renderBlocked() {
           id,
           block_type: data.get('block_type'),
           block_date: data.get('block_date') || null,
-          weekday: data.get('weekday') === '' ? null : Number(data.get('weekday')),
+          weekday: data.get('block_type') === 'weekday' ? 0 : null,
           bench_id: parseId(data.get('bench_id')),
           start_time: data.get('start_time'),
           end_time: data.get('end_time'),
@@ -250,7 +247,7 @@ el.addBlocked.addEventListener('click', async () => {
       action: 'upsert',
       blocked: normalizeBlockedPeriod({
         block_type: 'weekday',
-        weekday: 1,
+        weekday: 0,
         block_date: null,
         bench_id: null,
         start_time: '12:00',

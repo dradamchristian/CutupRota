@@ -1,4 +1,4 @@
-import { combineDateTime, minutesToTime, parseTimeToMinutes, weekdayIndex } from './date.js';
+import { combineDateTime, minutesToTime, parseTimeToMinutes } from './date.js';
 
 function overlaps(rangeA, rangeB) {
   return rangeA.start < rangeB.end && rangeA.end > rangeB.start;
@@ -18,7 +18,7 @@ export function getEnabledDurations(settings) {
   return allowed;
 }
 
-export function normalizeBlockedForDate(blockedPeriods, dateKey, dayIndex, benchId) {
+export function normalizeBlockedForDate(blockedPeriods, dateKey, benchId) {
   return blockedPeriods.filter((block) => {
     const blockBenchId = block.bench_id == null ? null : block.bench_id;
     const benchMatches = blockBenchId == null || idsMatch(blockBenchId, benchId);
@@ -26,9 +26,8 @@ export function normalizeBlockedForDate(blockedPeriods, dateKey, dayIndex, bench
 
     const blockType = block.block_type || (block.block_date ? 'date' : 'weekday');
 
-    if (blockType === 'weekday') {
-      return Number(block.weekday) === dayIndex;
-    }
+    // "weekday" blocks are treated as recurring every day.
+    if (blockType === 'weekday') return true;
 
     if (blockType === 'date') {
       return block.block_date === dateKey;
@@ -39,7 +38,6 @@ export function normalizeBlockedForDate(blockedPeriods, dateKey, dayIndex, bench
 }
 
 export function buildDayBlocks({ dateKey, benchId, bookings, blockedPeriods, settings }) {
-  const dayIndex = weekdayIndex(new Date(`${dateKey}T00:00:00`));
   const startMins = parseTimeToMinutes(settings.default_start_time);
   const endMins = parseTimeToMinutes(settings.default_end_time);
   const interval = Number(settings.slot_interval_minutes);
@@ -54,7 +52,7 @@ export function buildDayBlocks({ dateKey, benchId, bookings, blockedPeriods, set
       booking: b
     }));
 
-  const dayBlocked = normalizeBlockedForDate(blockedPeriods, dateKey, dayIndex, benchId)
+  const dayBlocked = normalizeBlockedForDate(blockedPeriods, dateKey, benchId)
     .map((b) => ({
       kind: 'blocked',
       id: b.id,
@@ -71,11 +69,11 @@ export function buildDayBlocks({ dateKey, benchId, bookings, blockedPeriods, set
     const slotEnd = combineDateTime(dateKey, minutesToTime(m + interval));
     let status = 'free';
 
-    if (dayBlocked.some((x) => overlaps({ start: slotStart, end: slotEnd }, x))) {
-      status = 'blocked';
-    }
     if (dayBookings.some((x) => overlaps({ start: slotStart, end: slotEnd }, x))) {
       status = 'booked';
+    }
+    if (dayBlocked.some((x) => overlaps({ start: slotStart, end: slotEnd }, x))) {
+      status = 'blocked';
     }
 
     slots.push({
