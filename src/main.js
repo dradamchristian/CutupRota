@@ -170,8 +170,9 @@ function renderBenchDayColumn(dateKey, bench) {
     return `<button class="${classes.join(' ')}" ${click}><span>${fmtTime(slot.start)}</span></button>`;
   }).join('');
 
-  const blocks = day.blocks.map((block) => {
-    if (block.kind === 'booked') {
+  const blocks = day.blocks
+    .filter((block) => block.kind === 'booked')
+    .map((block) => {
       const b = block.booking;
       return `
       <button class="event booked" data-action="delete-booking" data-booking="${b.id}">
@@ -179,16 +180,7 @@ function renderBenchDayColumn(dateKey, bench) {
         <span>${escapeHtml(b.specialties)}</span>
         <small>${fmtTime(b.start_at)}–${fmtTime(b.end_at)}</small>
       </button>`;
-    }
-
-    return `
-      <div class="event blocked">
-        <strong>Blocked</strong>
-        <span>${escapeHtml(block.blocked.reason || 'Unavailable')}</span>
-        <small>${block.blocked.start_time}–${block.blocked.end_time}</small>
-      </div>
-    `;
-  }).join('');
+    }).join('');
 
   return `
     <section class="bench-column">
