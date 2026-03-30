@@ -69,9 +69,19 @@ async function findExactBookingMatch(supabase, booking) {
 async function insertBookingWithFallback(supabase, payload) {
   const transientCodes = new Set(['40001', '40P01', '53300', '57P03']);
   const maxAttempts = 3;
+  const insertPayload = {
+    bench_id: payload?.bench_id,
+    booked_by: payload?.booked_by,
+    specialties: payload?.specialties || null,
+    notes: payload?.notes || null,
+    booking_date: toPostgresDate(payload?.start_at),
+    start_time: toPostgresTime(payload?.start_at),
+    end_time: toPostgresTime(payload?.end_at)
+  };
+
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     const rawInsertStart = Date.now();
-    const { data, error } = await supabase.from('bookings').insert(payload).select('*');
+    const { data, error } = await supabase.from('bookings').insert(insertPayload).select('*');
     const rawInsertDurationMs = Date.now() - rawInsertStart;
     const rowCount = Array.isArray(data) ? data.length : 0;
 
