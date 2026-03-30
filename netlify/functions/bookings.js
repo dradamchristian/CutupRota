@@ -132,7 +132,15 @@ async function insertBookingWithFallback(supabase, payload) {
     if (tried.has(key)) continue;
     tried.add(key);
 
+    const rawInsertStart = Date.now();
     const { error } = await supabase.from('bookings').insert(candidateToInsert);
+    const rawInsertDurationMs = Date.now() - rawInsertStart;
+
+    console.log('[bookings] raw insert call duration', {
+      duration_ms: rawInsertDurationMs,
+      attempt: index + 1
+    });
+
     if (!error) {
       const keys = Object.keys(candidateToInsert);
       const shouldFormat = useTimeFormat;
@@ -286,7 +294,7 @@ export async function handler(event) {
           const postInsertStart = Date.now();
           const existing = await findExactBookingMatch(supabase, booking);
           postInsertDurationMs = Date.now() - postInsertStart;
-          console.log('[bookings] post-insert fetch/formatting duration', {
+          console.log('[bookings] follow-up select/read duration', {
             duration_ms: postInsertDurationMs
           });
 
@@ -310,7 +318,7 @@ export async function handler(event) {
         duration_ms: Date.now() - insertStart
       });
 
-      console.log('[bookings] post-insert fetch/formatting duration', {
+      console.log('[bookings] follow-up select/read duration', {
         duration_ms: postInsertDurationMs
       });
 
