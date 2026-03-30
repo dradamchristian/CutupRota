@@ -17,7 +17,12 @@ function normalizeBlockedInput(blocked) {
   next.block_date = blockType === 'date' ? (next.block_date || null) : null;
   next.weekday = blockType === 'weekday' ? (next.weekday == null || next.weekday === '' ? null : Number(next.weekday)) : null;
   next.bench_id = parseId(next.bench_id);
-  next.id = parseId(next.id);
+  const parsedId = parseId(next.id);
+  if (parsedId == null) {
+    delete next.id;
+  } else {
+    next.id = parsedId;
+  }
   return next;
 }
 

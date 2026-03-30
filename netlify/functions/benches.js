@@ -1,9 +1,10 @@
 import { getAdminClient, json, parseBody } from './_supabaseAdmin.js';
 
 function isMissingBenchColumnError(message = '') {
+  const normalized = String(message);
   return (
-    /column "[^"]+" of relation "benches" does not exist/i.test(message) ||
-    /Could not find the "[^"]+" column of "benches"/i.test(message)
+    /column ['"][^'"]+['"] of relation ['"]benches['"] does not exist/i.test(normalized) ||
+    /Could not find the ['"][^'"]+['"] column of ['"]benches['"]/i.test(normalized)
   );
 }
 
