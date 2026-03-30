@@ -4,6 +4,11 @@ function overlaps(rangeA, rangeB) {
   return rangeA.start < rangeB.end && rangeA.end > rangeB.start;
 }
 
+function idsMatch(left, right) {
+  if (left == null || right == null) return false;
+  return String(left) === String(right);
+}
+
 export function getEnabledDurations(settings) {
   const allowed = [];
   if (settings.allow_30) allowed.push(30);
@@ -15,8 +20,8 @@ export function getEnabledDurations(settings) {
 
 export function normalizeBlockedForDate(blockedPeriods, dateKey, dayIndex, benchId) {
   return blockedPeriods.filter((block) => {
-    const blockBenchId = block.bench_id == null ? null : Number(block.bench_id);
-    const benchMatches = !blockBenchId || blockBenchId === Number(benchId);
+    const blockBenchId = block.bench_id == null ? null : block.bench_id;
+    const benchMatches = blockBenchId == null || idsMatch(blockBenchId, benchId);
     if (!benchMatches) return false;
 
     const blockType = block.block_type || (block.block_date ? 'date' : 'weekday');
@@ -40,7 +45,7 @@ export function buildDayBlocks({ dateKey, benchId, bookings, blockedPeriods, set
   const interval = Number(settings.slot_interval_minutes);
 
   const dayBookings = bookings
-    .filter((b) => b.bench_id === benchId && b.start_at.startsWith(dateKey))
+    .filter((b) => idsMatch(b.bench_id, benchId) && b.start_at.startsWith(dateKey))
     .map((b) => ({
       kind: 'booked',
       id: b.id,

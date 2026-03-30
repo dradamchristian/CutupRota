@@ -2,6 +2,13 @@ import { getAdminClient, json, parseBody } from './_supabaseAdmin.js';
 
 let preferredBlockedPayload = null;
 
+function parseId(value) {
+  if (value == null || value === '') return null;
+  const text = String(value).trim();
+  if (!text) return null;
+  return /^-?\d+$/.test(text) ? Number(text) : text;
+}
+
 function normalizeBlockedInput(blocked) {
   const next = { ...blocked };
   const blockType = next.block_type || next.type || (next.block_date ? 'date' : 'weekday');
@@ -9,7 +16,8 @@ function normalizeBlockedInput(blocked) {
   next.block_type = blockType;
   next.block_date = blockType === 'date' ? (next.block_date || null) : null;
   next.weekday = blockType === 'weekday' ? (next.weekday == null || next.weekday === '' ? null : Number(next.weekday)) : null;
-  next.bench_id = next.bench_id == null || next.bench_id === '' ? null : Number(next.bench_id);
+  next.bench_id = parseId(next.bench_id);
+  next.id = parseId(next.id);
   return next;
 }
 
@@ -48,6 +56,7 @@ async function upsertBlockedWithFallback(supabase, blocked) {
         keys.forEach((k) => {
           if (normalized[k] !== undefined) result[k] = normalized[k];
         });
+        if (normalized.id != null) result.id = normalized.id;
         return result;
       };
       return;

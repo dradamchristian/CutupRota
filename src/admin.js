@@ -23,6 +23,13 @@ const state = {
   blockedPeriods: []
 };
 
+function parseId(value) {
+  if (value == null) return null;
+  const text = String(value).trim();
+  if (!text) return null;
+  return /^-?\d+$/.test(text) ? Number(text) : text;
+}
+
 function flash(text, type = 'info') {
   el.message.className = `message ${type}`;
   el.message.textContent = text;
@@ -93,7 +100,7 @@ function renderBenches() {
   el.benchesList.querySelectorAll('form[data-bench-id]').forEach((form) => {
     form.addEventListener('submit', async (event) => {
       event.preventDefault();
-      const id = Number(form.dataset.benchId);
+      const id = parseId(form.dataset.benchId);
       const data = new FormData(form);
       try {
         await saveBench({
@@ -102,7 +109,7 @@ function renderBenches() {
             id,
             name: data.get('name'),
             display_order: Number(data.get('display_order') || 0),
-            _activeKey: state.benches.find((b) => b.id === id)?._activeKey || 'active'
+            _activeKey: state.benches.find((b) => String(b.id) === String(id))?._activeKey || 'active'
           }, data.get('active') === 'on')
         });
         flash('Bench updated.', 'success');
@@ -116,7 +123,7 @@ function renderBenches() {
   el.benchesList.querySelectorAll('[data-delete-bench]').forEach((button) => {
     button.addEventListener('click', async () => {
       if (!confirm('Delete this bench?')) return;
-      await saveBench({ action: 'delete', id: Number(button.dataset.deleteBench) });
+      await saveBench({ action: 'delete', id: parseId(button.dataset.deleteBench) });
       flash('Bench deleted.', 'success');
       await loadAdminData();
     });
@@ -136,7 +143,7 @@ function blockedRow(block) {
       </select>
       <select name="bench_id">
         <option value="">All benches</option>
-        ${state.benches.map((b) => `<option value="${b.id}" ${block.bench_id === b.id ? 'selected' : ''}>${escapeHtml(b.name)}</option>`).join('')}
+        ${state.benches.map((b) => `<option value="${b.id}" ${String(block.bench_id) === String(b.id) ? 'selected' : ''}>${escapeHtml(b.name)}</option>`).join('')}
       </select>
       <input name="start_time" type="time" value="${block.start_time}" required />
       <input name="end_time" type="time" value="${block.end_time}" required />
@@ -153,7 +160,7 @@ function renderBlocked() {
   el.blockedList.querySelectorAll('form[data-block-id]').forEach((form) => {
     form.addEventListener('submit', async (event) => {
       event.preventDefault();
-      const id = Number(form.dataset.blockId);
+      const id = parseId(form.dataset.blockId);
       const data = new FormData(form);
       await saveBlockedPeriod({
         action: 'upsert',
@@ -162,7 +169,7 @@ function renderBlocked() {
           block_type: data.get('block_type'),
           block_date: data.get('block_date') || null,
           weekday: data.get('weekday') === '' ? null : Number(data.get('weekday')),
-          bench_id: data.get('bench_id') === '' ? null : Number(data.get('bench_id')),
+          bench_id: parseId(data.get('bench_id')),
           start_time: data.get('start_time'),
           end_time: data.get('end_time'),
           reason: data.get('reason') || null
@@ -176,7 +183,7 @@ function renderBlocked() {
   el.blockedList.querySelectorAll('[data-delete-block]').forEach((button) => {
     button.addEventListener('click', async () => {
       if (!confirm('Delete blocked period?')) return;
-      await saveBlockedPeriod({ action: 'delete', id: Number(button.dataset.deleteBlock) });
+      await saveBlockedPeriod({ action: 'delete', id: parseId(button.dataset.deleteBlock) });
       flash('Blocked period deleted.', 'success');
       await loadAdminData();
     });

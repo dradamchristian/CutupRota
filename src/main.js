@@ -14,8 +14,6 @@ const el = {
   empty: document.getElementById('empty'),
   msg: document.getElementById('message'),
   rangeLabel: document.getElementById('rangeLabel'),
-  prevDays: document.getElementById('prevDays'),
-  nextDays: document.getElementById('nextDays'),
   benchFilter: document.getElementById('benchFilter'),
   bookingDialog: document.getElementById('bookingDialog'),
   bookingForm: document.getElementById('bookingForm'),
@@ -35,7 +33,6 @@ const state = {
   benches: [],
   bookings: [],
   blockedPeriods: [],
-  startOffset: 0,
   selectedBench: 'all',
   pendingSlot: null,
   pendingDelete: null,
@@ -124,8 +121,7 @@ function renderBoard() {
 
   const dates = buildVisibleDates({
     daysAhead: Number(state.settings.booking_days_ahead || 5),
-    weekendsEnabled: Boolean(state.settings.weekends_enabled),
-    startOffset: state.startOffset
+    weekendsEnabled: Boolean(state.settings.weekends_enabled)
   });
 
   const visibleBenches = state.selectedBench === 'all'
@@ -312,16 +308,6 @@ async function deleteBooking() {
   setMessage('Booking deleted.', 'success');
   await loadAllData();
 }
-
-el.prevDays.addEventListener('click', () => {
-  state.startOffset = Math.max(0, state.startOffset - Number(state.settings?.booking_days_ahead || 5));
-  renderBoard();
-});
-
-el.nextDays.addEventListener('click', () => {
-  state.startOffset += Number(state.settings?.booking_days_ahead || 5);
-  renderBoard();
-});
 
 el.benchFilter.addEventListener('change', (event) => {
   state.selectedBench = event.target.value;
