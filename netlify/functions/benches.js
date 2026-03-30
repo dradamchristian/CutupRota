@@ -9,12 +9,19 @@ function isMissingBenchColumnError(message = '') {
 
 function buildBenchPayload(bench, activeKey = 'active') {
   const payload = {
-    id: bench.id,
     name: bench.name,
     display_order: bench.display_order ?? 0
   };
 
-  if (typeof bench.active === 'boolean') payload[activeKey] = bench.active;
+  if (bench.id != null && bench.id !== '') payload.id = bench.id;
+
+  const activeValue =
+    typeof bench.active === 'boolean' ? bench.active
+      : typeof bench.is_active === 'boolean' ? bench.is_active
+        : typeof bench.enabled === 'boolean' ? bench.enabled
+          : null;
+
+  if (typeof activeValue === 'boolean') payload[activeKey] = activeValue;
   return payload;
 }
 
