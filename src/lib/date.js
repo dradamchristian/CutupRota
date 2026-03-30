@@ -24,7 +24,10 @@ export function formatDateKey(date) {
 }
 
 export function combineDateTime(dateKey, hhmm) {
-  return new Date(`${dateKey}T${hhmm}:00`);
+  const text = String(hhmm || '').trim();
+  const match = text.match(/^(\d{2}:\d{2})/);
+  const safeTime = match ? match[1] : text;
+  return new Date(`${dateKey}T${safeTime}:00`);
 }
 
 export function formatLocalDateTime(date) {
