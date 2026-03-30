@@ -165,7 +165,7 @@ function renderBlocked() {
           id,
           block_type: data.get('block_type'),
           block_date: data.get('block_date') || null,
-          weekday: null,
+          weekday: data.get('block_type') === 'weekday' ? 0 : null,
           bench_id: parseId(data.get('bench_id')),
           start_time: data.get('start_time'),
           end_time: data.get('end_time'),
@@ -247,7 +247,7 @@ el.addBlocked.addEventListener('click', async () => {
       action: 'upsert',
       blocked: normalizeBlockedPeriod({
         block_type: 'weekday',
-        weekday: null,
+        weekday: 0,
         block_date: null,
         bench_id: null,
         start_time: '12:00',
