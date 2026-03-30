@@ -1,5 +1,66 @@
 import { getAdminClient, json, parseBody } from './_supabaseAdmin.js';
 
+let preferredBlockedPayload = null;
+
+function normalizeBlockedInput(blocked) {
+  const next = { ...blocked };
+  const blockType = next.block_type || next.type || (next.block_date ? 'date' : 'weekday');
+
+  next.block_type = blockType;
+  next.block_date = blockType === 'date' ? (next.block_date || null) : null;
+  next.weekday = blockType === 'weekday' ? (next.weekday == null || next.weekday === '' ? null : Number(next.weekday)) : null;
+  next.bench_id = next.bench_id == null || next.bench_id === '' ? null : Number(next.bench_id);
+  return next;
+}
+
+function buildBlockedVariants(blocked) {
+  const normalized = normalizeBlockedInput(blocked);
+  const variants = [normalized];
+
+  if ('block_type' in normalized) {
+    const withoutType = { ...normalized };
+    delete withoutType.block_type;
+    variants.push(withoutType);
+
+    variants.push({ ...withoutType, type: normalized.block_type });
+  }
+
+  return variants;
+}
+
+async function upsertBlockedWithFallback(supabase, blocked) {
+  const tried = new Set();
+  const candidates = preferredBlockedPayload
+    ? [preferredBlockedPayload(blocked), ...buildBlockedVariants(blocked)]
+    : buildBlockedVariants(blocked);
+
+  for (const candidate of candidates) {
+    const key = JSON.stringify(Object.keys(candidate).sort());
+    if (tried.has(key)) continue;
+    tried.add(key);
+
+    const { error } = await supabase.from('blocked_periods').upsert(candidate, { onConflict: 'id' });
+    if (!error) {
+      const keys = Object.keys(candidate);
+      preferredBlockedPayload = (input) => {
+        const normalized = normalizeBlockedInput(input);
+        const result = {};
+        keys.forEach((k) => {
+          if (normalized[k] !== undefined) result[k] = normalized[k];
+        });
+        return result;
+      };
+      return;
+    }
+
+    const combined = `${error.message || ''} ${error.details || ''}`.toLowerCase();
+    const isColumnError = combined.includes('could not find') && combined.includes('column');
+    if (!isColumnError) throw error;
+  }
+
+  throw new Error('Could not save blocked period because no compatible column set was found.');
+}
+
 export async function handler(event) {
   if (event.httpMethod !== 'POST') return json(405, { error: 'Method not allowed' });
 
@@ -12,12 +73,7 @@ export async function handler(event) {
         return json(400, { error: 'start_time and end_time are required' });
       }
 
-      if (!['date', 'weekday'].includes(blocked.block_type)) {
-        return json(400, { error: 'block_type must be date or weekday' });
-      }
-
-      const { error } = await supabase.from('blocked_periods').upsert(blocked, { onConflict: 'id' });
-      if (error) throw error;
+      await upsertBlockedWithFallback(supabase, blocked);
       return json(200, { ok: true });
     }
 

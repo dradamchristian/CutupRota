@@ -4,6 +4,8 @@ const START_WRITE_KEYS = ['start_at', 'starts_at', 'start_time', 'start'];
 const END_WRITE_KEYS = ['end_at', 'ends_at', 'end_time', 'end'];
 const BOOKING_DATE_WRITE_KEYS = ['booking_date', 'date', 'booking_day'];
 
+let preferredBookingPayload = null;
+
 function toPostgresDate(value) {
   if (typeof value === 'string') {
     const trimmed = value.trim();
@@ -115,7 +117,8 @@ function buildPayloadVariants(payload) {
 async function insertBookingWithFallback(supabase, payload) {
   const tried = new Set();
   let useTimeFormat = false;
-  const candidates = [payload, ...buildPayloadVariants(payload)];
+  const baseCandidates = [payload, ...buildPayloadVariants(payload)];
+  const candidates = preferredBookingPayload ? [preferredBookingPayload(payload), ...baseCandidates] : baseCandidates;
 
   for (let index = 0; index < candidates.length; index += 1) {
     const candidate = candidates[index];
@@ -130,7 +133,20 @@ async function insertBookingWithFallback(supabase, payload) {
     tried.add(key);
 
     const { error } = await supabase.from('bookings').insert(candidateToInsert);
-    if (!error) return;
+    if (!error) {
+      const keys = Object.keys(candidateToInsert);
+      const shouldFormat = useTimeFormat;
+      preferredBookingPayload = (input) => {
+        let next = { ...input };
+        if (shouldFormat) next = formatCandidateTimes(next);
+        const preferred = {};
+        keys.forEach((keyName) => {
+          if (next[keyName] !== undefined) preferred[keyName] = next[keyName];
+        });
+        return preferred;
+      };
+      return;
+    }
 
     const message = String(error.message || '');
     const details = String(error.details || '');

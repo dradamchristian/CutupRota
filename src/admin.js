@@ -2,6 +2,7 @@ import { supabase } from './lib/supabaseClient.js';
 import { saveBench, saveBlockedPeriod, updateSettings, verifyAdminPin } from './lib/api.js';
 import { escapeHtml } from './lib/format.js';
 import { createBenchPayload, normalizeBenches } from './lib/benches.js';
+import { normalizeBlockedPeriod, normalizeBlockedPeriods } from './lib/blockedPeriods.js';
 
 const el = {
   message: document.getElementById('adminMessage'),
@@ -41,7 +42,7 @@ async function loadAdminData() {
 
   state.settings = settingsRes.data;
   state.benches = normalizeBenches(benchesRes.data);
-  state.blockedPeriods = blockedRes.data;
+  state.blockedPeriods = normalizeBlockedPeriods(blockedRes.data);
   renderAll();
 }
 
@@ -156,7 +157,7 @@ function renderBlocked() {
       const data = new FormData(form);
       await saveBlockedPeriod({
         action: 'upsert',
-        blocked: {
+        blocked: normalizeBlockedPeriod({
           id,
           block_type: data.get('block_type'),
           block_date: data.get('block_date') || null,
@@ -165,7 +166,7 @@ function renderBlocked() {
           start_time: data.get('start_time'),
           end_time: data.get('end_time'),
           reason: data.get('reason') || null
-        }
+        })
       });
       flash('Blocked period updated.', 'success');
       await loadAdminData();
@@ -240,7 +241,7 @@ el.addBlocked.addEventListener('click', async () => {
   try {
     await saveBlockedPeriod({
       action: 'upsert',
-      blocked: {
+      blocked: normalizeBlockedPeriod({
         block_type: 'weekday',
         weekday: 1,
         block_date: null,
@@ -248,7 +249,7 @@ el.addBlocked.addEventListener('click', async () => {
         start_time: '12:00',
         end_time: '13:00',
         reason: 'Lunch break'
-      }
+      })
     });
     flash('Blocked period added.', 'success');
     await loadAdminData();

@@ -15,14 +15,17 @@ export function getEnabledDurations(settings) {
 
 export function normalizeBlockedForDate(blockedPeriods, dateKey, dayIndex, benchId) {
   return blockedPeriods.filter((block) => {
-    const benchMatches = !block.bench_id || block.bench_id === benchId;
+    const blockBenchId = block.bench_id == null ? null : Number(block.bench_id);
+    const benchMatches = !blockBenchId || blockBenchId === Number(benchId);
     if (!benchMatches) return false;
 
-    if (block.block_type === 'weekday') {
+    const blockType = block.block_type || (block.block_date ? 'date' : 'weekday');
+
+    if (blockType === 'weekday') {
       return Number(block.weekday) === dayIndex;
     }
 
-    if (block.block_type === 'date') {
+    if (blockType === 'date') {
       return block.block_date === dateKey;
     }
 

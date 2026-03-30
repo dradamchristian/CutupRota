@@ -4,6 +4,7 @@ import { buildDayBlocks } from './lib/slotBuilder.js';
 import { escapeHtml, fmtDateLong, fmtTime } from './lib/format.js';
 import { normalizeBookings } from './lib/bookings.js';
 import { normalizeBenches } from './lib/benches.js';
+import { normalizeBlockedPeriods } from './lib/blockedPeriods.js';
 
 const el = {
   sub: document.getElementById('labSub'),
@@ -32,6 +33,7 @@ async function loadLabView() {
 
     const settings = settingsRes.data;
     const bookings = normalizeBookings(bookingsRes.data);
+    const blockedPeriods = normalizeBlockedPeriods(blockedRes.data);
     const benches = normalizeBenches(benchesRes.data)
       .filter((b) => b.active)
       .filter((b) => (benchParam ? String(b.id) === String(benchParam) : true));
@@ -53,7 +55,7 @@ async function loadLabView() {
           dateKey,
           benchId: bench.id,
           bookings,
-          blockedPeriods: blockedRes.data,
+          blockedPeriods,
           settings
         });
 
