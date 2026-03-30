@@ -1,11 +1,5 @@
 import { getAdminClient, json, parseBody } from './_supabaseAdmin.js';
 
-const START_WRITE_KEYS = ['start_at', 'starts_at', 'start_time', 'start'];
-const END_WRITE_KEYS = ['end_at', 'ends_at', 'end_time', 'end'];
-const BOOKING_DATE_WRITE_KEYS = ['booking_date', 'date', 'booking_day'];
-
-let preferredBookingPayload = null;
-
 function toPostgresDate(value) {
   if (typeof value === 'string') {
     const trimmed = value.trim();
@@ -72,108 +66,56 @@ async function findExactBookingMatch(supabase, booking) {
   return sameBooker && sameSpecialties && sameNotes ? data : null;
 }
 
-function formatCandidateTimes(candidate) {
-  const next = { ...candidate };
-  const timeKeys = [...new Set([...START_WRITE_KEYS, ...END_WRITE_KEYS])];
-
-  timeKeys.forEach((key) => {
-    if (next[key]) next[key] = toPostgresTime(next[key]);
-  });
-
-  return next;
-}
-
-function buildPayloadVariants(payload) {
-  const timeVariants = [];
-
-  for (const startKey of START_WRITE_KEYS) {
-    for (const endKey of END_WRITE_KEYS) {
-      const next = { ...payload };
-      delete next.start_at;
-      delete next.end_at;
-      next[startKey] = payload.start_at;
-      next[endKey] = payload.end_at;
-      timeVariants.push(next);
-    }
-  }
-
-  const bookingDate = toPostgresDate(payload.start_at);
-  if (!bookingDate) return timeVariants;
-
-  const withDateVariants = [];
-  for (const candidate of timeVariants) {
-    withDateVariants.push(candidate);
-    for (const dateKey of BOOKING_DATE_WRITE_KEYS) {
-      withDateVariants.push({
-        ...candidate,
-        [dateKey]: bookingDate
-      });
-    }
-  }
-
-  return withDateVariants;
-}
-
 async function insertBookingWithFallback(supabase, payload) {
-  const tried = new Set();
-  let useTimeFormat = false;
-  const baseCandidates = [payload, ...buildPayloadVariants(payload)];
-  const candidates = preferredBookingPayload ? [preferredBookingPayload(payload), ...baseCandidates] : baseCandidates;
+  const transientCodes = new Set(['40001', '40P01', '53300', '57P03']);
+  const maxAttempts = 3;
+  const insertPayload = {
+    bench_id: payload?.bench_id,
+    booked_by: payload?.booked_by,
+    specialties: payload?.specialties || null,
+    notes: payload?.notes || null,
+    booking_date: toPostgresDate(payload?.start_at),
+    start_time: toPostgresTime(payload?.start_at),
+    end_time: toPostgresTime(payload?.end_at)
+  };
 
-  for (let index = 0; index < candidates.length; index += 1) {
-    const candidate = candidates[index];
-    const candidateToInsert = useTimeFormat ? formatCandidateTimes(candidate) : candidate;
-
-    const key = JSON.stringify({
-      keys: Object.keys(candidateToInsert).sort(),
-      values: Object.entries(candidateToInsert).sort(([a], [b]) => a.localeCompare(b))
-    });
-
-    if (tried.has(key)) continue;
-    tried.add(key);
-
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     const rawInsertStart = Date.now();
-    const { error } = await supabase.from('bookings').insert(candidateToInsert);
+    const { data, error } = await supabase.from('bookings').insert(insertPayload).select('*');
     const rawInsertDurationMs = Date.now() - rawInsertStart;
+    const rowCount = Array.isArray(data) ? data.length : 0;
 
     console.log('[bookings] raw insert call duration', {
       duration_ms: rawInsertDurationMs,
-      attempt: index + 1
+      attempt
+    });
+    console.log('[bookings] insert returning payload', {
+      attempt,
+      rowCount,
+      rowsLength: rowCount,
+      firstRow: rowCount > 0 ? data[0] : null
     });
 
-    if (!error) {
-      const keys = Object.keys(candidateToInsert);
-      const shouldFormat = useTimeFormat;
-      preferredBookingPayload = (input) => {
-        let next = { ...input };
-        if (shouldFormat) next = formatCandidateTimes(next);
-        const preferred = {};
-        keys.forEach((keyName) => {
-          if (next[keyName] !== undefined) preferred[keyName] = next[keyName];
-        });
-        return preferred;
-      };
-      return;
+    if (!error && rowCount > 0) {
+      return data[0];
     }
 
-    const message = String(error.message || '');
-    const details = String(error.details || '');
-    const combined = `${message} ${details}`.toLowerCase();
-    const isColumnError = combined.includes('could not find') && combined.includes('column');
-    const isTimeTypeError = combined.includes('invalid input syntax for type time');
-    const isMissingBookingDateError = combined.includes('null value in column')
-      && BOOKING_DATE_WRITE_KEYS.some((dateKey) => combined.includes(`"${dateKey}"`) || combined.includes(`'${dateKey}'`));
-
-    if (isTimeTypeError && !useTimeFormat) {
-      useTimeFormat = true;
-      index = -1;
+    if (error) {
+      console.error('[bookings] insert SQL error', {
+        attempt,
+        message: error?.message || null,
+        details: error?.details || null,
+        hint: error?.hint || null,
+        code: error?.code || null
+      });
+      if (!transientCodes.has(error.code) || attempt === maxAttempts) throw error;
       continue;
     }
 
-    if (!isColumnError && !isMissingBookingDateError) throw error;
+    throw new Error('Insert succeeded without returned rows.');
   }
 
-  throw new Error('Could not insert booking because no compatible start/end column names were found.');
+  throw new Error('Booking insert failed after retrying transient database errors.');
 }
 
 export async function handler(event) {
@@ -284,10 +226,23 @@ export async function handler(event) {
       let postInsertDurationMs = 0;
 
       try {
-        await insertBookingWithFallback(supabase, booking);
+        const insertedBooking = await insertBookingWithFallback(supabase, booking);
+        console.log('[bookings] insert duration', {
+          duration_ms: Date.now() - insertStart
+        });
+        console.log('[bookings] total request duration', {
+          duration_ms: Date.now() - requestStart
+        });
+        return json(200, { ok: true, booking: insertedBooking });
       } catch (error) {
         console.log('[bookings] insert duration', {
           duration_ms: Date.now() - insertStart
+        });
+        console.error('[bookings] create insert catch', {
+          message: error?.message || null,
+          details: error?.details || null,
+          hint: error?.hint || null,
+          code: error?.code || null
         });
 
         if (error?.code === '23P01') {
@@ -311,22 +266,12 @@ export async function handler(event) {
           return json(409, { error: 'That slot was just booked already. Please refresh and choose another time.' });
         }
 
-        throw error;
+        return json(500, {
+          error: error?.message || 'Booking insert failed.',
+          code: error?.code || null,
+          details: error?.details || null
+        });
       }
-
-      console.log('[bookings] insert duration', {
-        duration_ms: Date.now() - insertStart
-      });
-
-      console.log('[bookings] follow-up select/read duration', {
-        duration_ms: postInsertDurationMs
-      });
-
-      console.log('[bookings] total request duration', {
-        duration_ms: Date.now() - requestStart
-      });
-
-      return json(200, { ok: true });
     }
 
     if (action === 'delete') {
