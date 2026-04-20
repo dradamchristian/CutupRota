@@ -61,25 +61,33 @@ function renderAll() {
 
 function renderSettings() {
   const s = state.settings;
-  const fields = [
-    ['booking_days_ahead', 'number'],
-    ['default_start_time', 'time'],
-    ['default_end_time', 'time'],
-    ['slot_interval_minutes', 'number'],
-    ['allow_30', 'checkbox'],
-    ['allow_60', 'checkbox'],
-    ['allow_90', 'checkbox'],
-    ['allow_120', 'checkbox'],
-    ['weekends_enabled', 'checkbox']
-  ];
+  const durationOptions = [30, 45, 60, 75, 90, 105, 120];
 
-  el.settingsForm.innerHTML = fields.map(([name, type]) => {
-    if (type === 'checkbox') {
-      return `<label class="checkbox"><input type="checkbox" name="${name}" ${s[name] ? 'checked' : ''} />${name}</label>`;
-    }
+  const durationCheckboxes = durationOptions.map((minutes) => {
+    const key = `allow_${minutes}`;
+    const checked = s[key] !== false;
+    return `<label class="checkbox"><input type="checkbox" name="${key}" ${checked ? 'checked' : ''} />Allow ${minutes} min bookings</label>`;
+  }).join('');
 
-    return `<label>${name}<input type="${type}" name="${name}" value="${escapeHtml(String(s[name] ?? ''))}" required /></label>`;
-  }).join('') + '<button class="btn primary" type="submit">Save settings</button>';
+  el.settingsForm.innerHTML = `
+    <label>Days visible
+      <input type="number" name="booking_days_ahead" value="${escapeHtml(String(s.booking_days_ahead ?? ''))}" min="1" required />
+    </label>
+    <label>Default day start
+      <input type="time" name="default_start_time" value="${escapeHtml(String(s.default_start_time ?? ''))}" step="900" required />
+    </label>
+    <label>Default day end
+      <input type="time" name="default_end_time" value="${escapeHtml(String(s.default_end_time ?? ''))}" step="900" required />
+    </label>
+    <label>Slot interval
+      <select name="slot_interval_minutes" required>
+        ${[15, 30, 60].map((minutes) => `<option value="${minutes}" ${Number(s.slot_interval_minutes) === minutes ? 'selected' : ''}>${minutes} minutes</option>`).join('')}
+      </select>
+    </label>
+    ${durationCheckboxes}
+    <label class="checkbox"><input type="checkbox" name="weekends_enabled" ${s.weekends_enabled ? 'checked' : ''} />Allow weekends</label>
+    <button class="btn primary" type="submit">Save settings</button>
+  `;
 }
 
 function benchRow(bench) {
@@ -142,8 +150,8 @@ function blockedRow(block) {
         <option value="">All benches</option>
         ${state.benches.map((b) => `<option value="${b.id}" ${String(block.bench_id) === String(b.id) ? 'selected' : ''}>${escapeHtml(b.name)}</option>`).join('')}
       </select>
-      <input name="start_time" type="time" value="${block.start_time}" required />
-      <input name="end_time" type="time" value="${block.end_time}" required />
+      <input name="start_time" type="time" value="${block.start_time}" step="900" required />
+      <input name="end_time" type="time" value="${block.end_time}" step="900" required />
       <input name="reason" placeholder="Reason" value="${escapeHtml(block.reason || '')}" />
       <button class="btn" type="submit">Save</button>
       <button class="btn danger" type="button" data-delete-block="${block.id}">Delete</button>
@@ -208,12 +216,13 @@ el.settingsForm.addEventListener('submit', async (event) => {
     default_start_time: data.get('default_start_time'),
     default_end_time: data.get('default_end_time'),
     slot_interval_minutes: Number(data.get('slot_interval_minutes')),
-    allow_30: data.get('allow_30') === 'on',
-    allow_60: data.get('allow_60') === 'on',
-    allow_90: data.get('allow_90') === 'on',
-    allow_120: data.get('allow_120') === 'on',
     weekends_enabled: data.get('weekends_enabled') === 'on'
   };
+
+  [30, 45, 60, 75, 90, 105, 120].forEach((minutes) => {
+    const key = `allow_${minutes}`;
+    if (key in state.settings) payload[key] = data.get(key) === 'on';
+  });
 
   try {
     await updateSettings(payload);
