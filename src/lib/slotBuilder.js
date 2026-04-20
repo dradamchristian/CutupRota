@@ -11,7 +11,7 @@ function idsMatch(left, right) {
 
 export function getEnabledDurations(settings) {
   const preferred = [30, 45, 60, 75, 90, 105, 120];
-  return preferred;
+  return preferred.filter((minutes) => settings[`allow_${minutes}`] !== false);
 }
 
 export function normalizeBlockedForDate(blockedPeriods, dateKey, benchId) {
