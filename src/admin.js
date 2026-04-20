@@ -65,10 +65,8 @@ function renderSettings() {
 
   const durationCheckboxes = durationOptions.map((minutes) => {
     const key = `allow_${minutes}`;
-    const checked = s[key] === true || !(key in s);
-    const disabled = key in s ? '' : 'disabled';
-    const hint = key in s ? '' : ' (default)';
-    return `<label class="checkbox"><input type="checkbox" name="${key}" ${checked ? 'checked' : ''} ${disabled} />Allow ${minutes} min bookings${hint}</label>`;
+    const checked = s[key] !== false;
+    return `<label class="checkbox"><input type="checkbox" name="${key}" ${checked ? 'checked' : ''} />Allow ${minutes} min bookings</label>`;
   }).join('');
 
   el.settingsForm.innerHTML = `
