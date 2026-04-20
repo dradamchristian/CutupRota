@@ -10,20 +10,9 @@ function idsMatch(left, right) {
 }
 
 export function getEnabledDurations(settings) {
-  const interval = Number(settings.slot_interval_minutes);
-  const allowed = [];
-  if (settings.allow_15) allowed.push(15);
-  if (settings.allow_30) allowed.push(30);
-  if (settings.allow_60) allowed.push(60);
-  if (settings.allow_90) allowed.push(90);
-  if (settings.allow_120) allowed.push(120);
-
-  if (interval === 15 && !allowed.includes(15)) allowed.unshift(15);
-  if (allowed.length === 0 && Number.isFinite(interval) && interval > 0) {
-    allowed.push(interval);
-  }
-
-  return allowed.sort((a, b) => a - b);
+  const preferred = [30, 45, 60, 75, 90, 105, 120];
+  const enabled = preferred.filter((minutes) => settings[`allow_${minutes}`] === true);
+  return enabled.length ? enabled : preferred;
 }
 
 export function normalizeBlockedForDate(blockedPeriods, dateKey, benchId) {

@@ -61,13 +61,14 @@ function renderAll() {
 
 function renderSettings() {
   const s = state.settings;
-  const durationOptions = [15, 30, 60, 90, 120].filter((minutes) => (
-    minutes === 15 ? ('allow_15' in s) : true
-  ));
+  const durationOptions = [30, 45, 60, 75, 90, 105, 120];
 
   const durationCheckboxes = durationOptions.map((minutes) => {
     const key = `allow_${minutes}`;
-    return `<label class="checkbox"><input type="checkbox" name="${key}" ${s[key] ? 'checked' : ''} />Allow ${minutes} min bookings</label>`;
+    const checked = s[key] === true || !(key in s);
+    const disabled = key in s ? '' : 'disabled';
+    const hint = key in s ? '' : ' (default)';
+    return `<label class="checkbox"><input type="checkbox" name="${key}" ${checked ? 'checked' : ''} ${disabled} />Allow ${minutes} min bookings${hint}</label>`;
   }).join('');
 
   el.settingsForm.innerHTML = `
@@ -220,7 +221,7 @@ el.settingsForm.addEventListener('submit', async (event) => {
     weekends_enabled: data.get('weekends_enabled') === 'on'
   };
 
-  [15, 30, 60, 90, 120].forEach((minutes) => {
+  [30, 45, 60, 75, 90, 105, 120].forEach((minutes) => {
     const key = `allow_${minutes}`;
     if (key in state.settings) payload[key] = data.get(key) === 'on';
   });
