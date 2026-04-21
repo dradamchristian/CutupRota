@@ -118,6 +118,7 @@ a { color: inherit; }
 .event.booked {
   cursor: pointer;
   background: color-mix(in srgb, var(--booked) 45%, #212735);
+  color: #fff;
 }
 .event.blocked {
   background: color-mix(in srgb, var(--blocked) 40%, #271f21);
