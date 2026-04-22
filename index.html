@@ -33,6 +33,28 @@
           </div>
         </section>
 
+        <section class="panel stack-lg" id="adhocPanel">
+          <div class="section-title">
+            <h2>Adhoc call-when-free queue</h2>
+          </div>
+          <form id="adhocForm" class="settings-grid">
+            <label>Name
+              <input required name="requested_by" maxlength="80" placeholder="e.g. AB / Dr Khan" />
+            </label>
+            <label>Rough duration (mins)
+              <input required type="number" min="5" max="480" step="5" name="duration_minutes" placeholder="e.g. 30" />
+            </label>
+            <label>Specialties (optional)
+              <input name="specialties" maxlength="120" placeholder="e.g. GI, Breast" />
+            </label>
+            <label>Notes (optional)
+              <input name="notes" maxlength="400" placeholder="Any context for the lab team" />
+            </label>
+            <button type="submit" class="btn primary">Add to call queue</button>
+          </form>
+          <div id="adhocList" class="events-stack"></div>
+        </section>
+
         <section id="message" class="message hidden"></section>
         <section id="loading" class="panel">Loading booking board...</section>
         <section id="error" class="panel hidden"></section>

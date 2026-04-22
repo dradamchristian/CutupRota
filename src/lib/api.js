@@ -77,3 +77,7 @@ export function saveBlockedPeriod(payload) {
 export function saveBooking(payload) {
   return netlifyCall('bookings', payload);
 }
+
+export function saveWaitlist(payload) {
+  return netlifyCall('waitlist', payload);
+}

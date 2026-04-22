@@ -193,6 +193,22 @@ label { font-size: .9rem; color: var(--muted); display: grid; gap: .2rem; }
 .lab-shell { max-width: 1800px; }
 .lab-column ul { list-style: none; margin: .35rem 0 0; padding: 0; display: grid; gap: .45rem; font-size: 1.15rem; }
 .lab-column li { padding: .5rem; border-radius: 8px; background: #1e2534; }
+.waitlist-item {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: #1a2232;
+  padding: .7rem .85rem;
+  font-size: 1.05rem;
+}
+.waitlist-item input[type="checkbox"] {
+  width: 1.3rem;
+  height: 1.3rem;
+  accent-color: #66d39c;
+}
+.waitlist-item.selected {
+  border-color: #66d39c;
+  box-shadow: 0 0 0 1px color-mix(in srgb, #66d39c 45%, transparent);
+}
 
 @media (max-width: 840px) {
   .topbar, .row, .topbar-actions { flex-direction: column; align-items: stretch; }
