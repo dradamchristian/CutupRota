@@ -1,5 +1,5 @@
 import { supabase } from './lib/supabaseClient.js';
-import { saveBooking } from './lib/api.js';
+import { saveBooking, saveWaitlist } from './lib/api.js';
 import { buildVisibleDates, combineDateTime, formatDateKey, formatLocalDateTime } from './lib/date.js';
 import { canBookAt, buildDayBlocks, getEnabledDurations } from './lib/slotBuilder.js';
 import { escapeHtml, fmtDateLabel, fmtTime } from './lib/format.js';
@@ -22,6 +22,8 @@ const el = {
   bookingFormError: document.getElementById('bookingFormError'),
   saveBooking: document.getElementById('saveBooking'),
   cancelBooking: document.getElementById('cancelBooking'),
+  adhocForm: document.getElementById('adhocForm'),
+  adhocList: document.getElementById('adhocList'),
   deleteDialog: document.getElementById('deleteDialog'),
   deleteForm: document.getElementById('deleteForm'),
   deleteMeta: document.getElementById('deleteMeta'),
@@ -33,6 +35,7 @@ const state = {
   benches: [],
   bookings: [],
   blockedPeriods: [],
+  waitlist: [],
   selectedBench: 'all',
   pendingSlot: null,
   pendingDelete: null,
@@ -70,16 +73,26 @@ function setBookingSaving(isSaving) {
   el.saveBooking.textContent = isSaving ? 'Saving…' : 'Save booking';
 }
 
+function isMissingWaitlistTable(error) {
+  const message = String(error?.message || '').toLowerCase();
+  return message.includes('does not exist') || message.includes('could not find the table');
+}
+
 async function loadAllData() {
   setLoading(true);
   el.error.classList.add('hidden');
 
   try {
-    const [settingsRes, benchesRes, bookingsRes, blockedRes] = await Promise.all([
+    const [settingsRes, benchesRes, bookingsRes, blockedRes, waitlistRes] = await Promise.all([
       supabase.from('app_settings').select('*').limit(1).single(),
       supabase.from('benches').select('*').order('display_order', { ascending: true }),
       supabase.from('bookings').select('*'),
-      supabase.from('blocked_periods').select('*').order('start_time', { ascending: true })
+      supabase.from('blocked_periods').select('*').order('start_time', { ascending: true }),
+      supabase
+        .from('bench_waitlist')
+        .select('*')
+        .is('completed_at', null)
+        .order('requested_at', { ascending: true })
     ]);
 
     const errors = [settingsRes, benchesRes, bookingsRes, blockedRes]
@@ -92,8 +105,14 @@ async function loadAllData() {
     state.benches = normalizeBenches(benchesRes.data).filter((b) => b.active);
     state.bookings = normalizeBookings(bookingsRes.data);
     state.blockedPeriods = normalizeBlockedPeriods(blockedRes.data);
+    state.waitlist = waitlistRes.error ? [] : (waitlistRes.data || []);
+
+    if (waitlistRes.error && !isMissingWaitlistTable(waitlistRes.error)) {
+      throw waitlistRes.error;
+    }
 
     renderBenchFilter();
+    renderAdhocList();
     renderBoard();
   } catch (err) {
     el.error.classList.remove('hidden');
@@ -101,6 +120,22 @@ async function loadAllData() {
   } finally {
     setLoading(false);
   }
+}
+
+function renderAdhocList() {
+  if (!el.adhocList) return;
+  if (!state.waitlist.length) {
+    el.adhocList.innerHTML = '<p class="muted">No pending adhoc requests.</p>';
+    return;
+  }
+
+  el.adhocList.innerHTML = state.waitlist.map((item) => `
+    <article class="event">
+      <strong>${escapeHtml(item.requested_by || 'Unknown')}</strong>
+      <span>${escapeHtml(item.specialties || 'General')}</span>
+      <small>~${Number(item.duration_minutes || 0)} min</small>
+    </article>
+  `).join('');
 }
 
 function renderBenchFilter() {
@@ -301,6 +336,23 @@ async function deleteBooking() {
   await loadAllData();
 }
 
+async function addAdhocRequest() {
+  if (!el.adhocForm?.reportValidity()) return;
+  const formData = new FormData(el.adhocForm);
+  await saveWaitlist({
+    action: 'create',
+    entry: {
+      requested_by: formData.get('requested_by'),
+      specialties: formData.get('specialties'),
+      notes: formData.get('notes'),
+      duration_minutes: Number(formData.get('duration_minutes'))
+    }
+  });
+  el.adhocForm.reset();
+  setMessage('Added to adhoc call queue.', 'success');
+  await loadAllData();
+}
+
 el.benchFilter.addEventListener('change', (event) => {
   state.selectedBench = event.target.value;
   renderBoard();
@@ -325,6 +377,15 @@ el.deleteForm.addEventListener('submit', async (event) => {
     el.deleteDialog.close();
   } catch (err) {
     setMessage(`Delete failed: ${err.message}`, 'error');
+  }
+});
+
+el.adhocForm?.addEventListener('submit', async (event) => {
+  event.preventDefault();
+  try {
+    await addAdhocRequest();
+  } catch (err) {
+    setMessage(`Could not add adhoc request: ${err.message}`, 'error');
   }
 });
 

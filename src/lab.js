@@ -2,6 +2,7 @@ import { supabase } from './lib/supabaseClient.js';
 import { buildVisibleDates, formatDateKey } from './lib/date.js';
 import { buildDayBlocks } from './lib/slotBuilder.js';
 import { escapeHtml, fmtDateLong, fmtTime } from './lib/format.js';
+import { saveWaitlist } from './lib/api.js';
 import { normalizeBookings } from './lib/bookings.js';
 import { normalizeBenches } from './lib/benches.js';
 import { normalizeBlockedPeriods } from './lib/blockedPeriods.js';
@@ -9,6 +10,7 @@ import { normalizeBlockedPeriods } from './lib/blockedPeriods.js';
 const el = {
   sub: document.getElementById('labSub'),
   board: document.getElementById('labBoard'),
+  queue: document.getElementById('labQueue'),
   loading: document.getElementById('labLoading'),
   error: document.getElementById('labError')
 };
@@ -16,24 +18,69 @@ const el = {
 const params = new URLSearchParams(window.location.search);
 const benchParam = params.get('bench');
 
+function isMissingWaitlistTable(error) {
+  const message = String(error?.message || '').toLowerCase();
+  return message.includes('does not exist') || message.includes('could not find the table');
+}
+
+function renderQueue(queueEntries) {
+  if (!el.queue) return;
+
+  if (!queueEntries.length) {
+    el.queue.innerHTML = '<p class="muted">No pending call-back requests.</p>';
+    return;
+  }
+
+  el.queue.innerHTML = queueEntries.map((entry) => `
+    <label class="checkbox waitlist-item">
+      <input type="checkbox" data-action="complete-waitlist" data-id="${entry.id}" />
+      <span><strong>${escapeHtml(entry.requested_by || 'Unknown')}</strong> • ~${Number(entry.duration_minutes || 0)} min${entry.specialties ? ` • ${escapeHtml(entry.specialties)}` : ''}</span>
+    </label>
+  `).join('');
+
+  el.queue.querySelectorAll('[data-action="complete-waitlist"]').forEach((checkbox) => {
+    checkbox.addEventListener('change', async () => {
+      if (!(checkbox instanceof HTMLInputElement) || !checkbox.checked) return;
+      checkbox.disabled = true;
+      try {
+        await saveWaitlist({ action: 'complete', id: checkbox.dataset.id });
+        await loadLabView();
+      } catch (err) {
+        checkbox.checked = false;
+        checkbox.disabled = false;
+        el.error.className = 'message error';
+        el.error.textContent = `Could not update queue: ${err.message}`;
+        el.error.classList.remove('hidden');
+      }
+    });
+  });
+}
+
 async function loadLabView() {
   try {
     el.loading.classList.remove('hidden');
-    const [settingsRes, benchesRes, bookingsRes, blockedRes] = await Promise.all([
+    const [settingsRes, benchesRes, bookingsRes, blockedRes, waitlistRes] = await Promise.all([
       supabase.from('app_settings').select('*').limit(1).single(),
       supabase.from('benches').select('*').order('display_order', { ascending: true }),
       supabase.from('bookings').select('*'),
-      supabase.from('blocked_periods').select('*')
+      supabase.from('blocked_periods').select('*'),
+      supabase
+        .from('bench_waitlist')
+        .select('*')
+        .is('completed_at', null)
+        .order('requested_at', { ascending: true })
     ]);
 
     if (settingsRes.error) throw settingsRes.error;
     if (benchesRes.error) throw benchesRes.error;
     if (bookingsRes.error) throw bookingsRes.error;
     if (blockedRes.error) throw blockedRes.error;
+    if (waitlistRes.error && !isMissingWaitlistTable(waitlistRes.error)) throw waitlistRes.error;
 
     const settings = settingsRes.data;
     const bookings = normalizeBookings(bookingsRes.data);
     const blockedPeriods = normalizeBlockedPeriods(blockedRes.data);
+    const waitlist = waitlistRes.error ? [] : (waitlistRes.data || []);
     const benches = normalizeBenches(benchesRes.data)
       .filter((b) => b.active)
       .filter((b) => (benchParam ? String(b.id) === String(benchParam) : true));
@@ -69,6 +116,7 @@ async function loadLabView() {
 
       return `<article class="day-card panel"><h2>${fmtDateLong(d)}</h2><div class="bench-grid">${cols}</div></article>`;
     }).join('');
+    renderQueue(waitlist);
 
     el.error.classList.add('hidden');
   } catch (err) {
