@@ -11,12 +11,14 @@ const el = {
   sub: document.getElementById('labSub'),
   board: document.getElementById('labBoard'),
   queue: document.getElementById('labQueue'),
+  completeQueueSelected: document.getElementById('completeQueueSelected'),
   loading: document.getElementById('labLoading'),
   error: document.getElementById('labError')
 };
 
 const params = new URLSearchParams(window.location.search);
 const benchParam = params.get('bench');
+const selectedQueueIds = new Set();
 
 function isMissingWaitlistTable(error) {
   const message = String(error?.message || '').toLowerCase();
@@ -25,6 +27,8 @@ function isMissingWaitlistTable(error) {
 
 function renderQueue(queueEntries) {
   if (!el.queue) return;
+  selectedQueueIds.clear();
+  if (el.completeQueueSelected) el.completeQueueSelected.disabled = true;
 
   if (!queueEntries.length) {
     el.queue.innerHTML = '<p class="muted">No pending call-back requests.</p>';
@@ -32,28 +36,45 @@ function renderQueue(queueEntries) {
   }
 
   el.queue.innerHTML = queueEntries.map((entry) => `
-    <label class="checkbox waitlist-item">
+    <label class="checkbox waitlist-item" data-row-id="${entry.id}">
       <input type="checkbox" data-action="complete-waitlist" data-id="${entry.id}" />
       <span><strong>${escapeHtml(entry.requested_by || 'Unknown')}</strong> • ~${Number(entry.duration_minutes || 0)} min${entry.specialties ? ` • ${escapeHtml(entry.specialties)}` : ''}</span>
     </label>
   `).join('');
 
   el.queue.querySelectorAll('[data-action="complete-waitlist"]').forEach((checkbox) => {
-    checkbox.addEventListener('change', async () => {
-      if (!(checkbox instanceof HTMLInputElement) || !checkbox.checked) return;
-      checkbox.disabled = true;
-      try {
-        await saveWaitlist({ action: 'complete', id: checkbox.dataset.id });
-        await loadLabView();
-      } catch (err) {
-        checkbox.checked = false;
-        checkbox.disabled = false;
-        el.error.className = 'message error';
-        el.error.textContent = `Could not update queue: ${err.message}`;
-        el.error.classList.remove('hidden');
+    checkbox.addEventListener('change', () => {
+      if (!(checkbox instanceof HTMLInputElement)) return;
+      const id = checkbox.dataset.id;
+      if (!id) return;
+
+      if (checkbox.checked) {
+        selectedQueueIds.add(id);
+      } else {
+        selectedQueueIds.delete(id);
       }
+
+      const row = checkbox.closest('[data-row-id]');
+      row?.classList.toggle('selected', checkbox.checked);
+      if (el.completeQueueSelected) el.completeQueueSelected.disabled = selectedQueueIds.size === 0;
     });
   });
+}
+
+async function completeSelectedQueueItems() {
+  if (selectedQueueIds.size === 0) return;
+  const ids = Array.from(selectedQueueIds);
+  if (el.completeQueueSelected) {
+    el.completeQueueSelected.disabled = true;
+    el.completeQueueSelected.textContent = 'Completing…';
+  }
+
+  try {
+    await Promise.all(ids.map((id) => saveWaitlist({ action: 'complete', id })));
+    await loadLabView();
+  } finally {
+    if (el.completeQueueSelected) el.completeQueueSelected.textContent = 'Mark ticked complete';
+  }
 }
 
 async function loadLabView() {
@@ -130,3 +151,13 @@ async function loadLabView() {
 
 loadLabView();
 setInterval(loadLabView, 30000);
+
+el.completeQueueSelected?.addEventListener('click', async () => {
+  try {
+    await completeSelectedQueueItems();
+  } catch (err) {
+    el.error.className = 'message error';
+    el.error.textContent = `Could not update queue: ${err.message}`;
+    el.error.classList.remove('hidden');
+  }
+});
