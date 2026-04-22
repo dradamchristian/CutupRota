@@ -34,7 +34,7 @@ create table if not exists public.bench_waitlist (
   specialties text,
   duration_minutes integer not null check (duration_minutes > 0),
   notes text,
-  bench_id bigint references public.benches (id) on delete set null,
+  bench_id uuid references public.benches (id) on delete set null,
   requested_at timestamptz not null default now(),
   completed_at timestamptz
 );
@@ -55,6 +55,7 @@ create policy "bench_waitlist_read_active"
 Notes:
 - create/complete/delete are performed via Netlify function `waitlist` using service role key.
 - select access is done directly in the browser app, so the read policy above is required when RLS is enabled.
+- if your `benches.id` is not `uuid`, set `bench_id` to exactly match your existing `benches.id` type.
 
 ## Run locally
 
