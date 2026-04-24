@@ -5,8 +5,8 @@
   --text: #edf1fa;
   --muted: #99a4bb;
   --primary: #4f8cff;
-  --free: #2f8f5b;
-  --booked: #3d4d8d;
+  --free: #1fa971;
+  --booked: #7e62ff;
   --blocked: #9a4c4c;
   --danger: #ce4f61;
   --border: #2a3243;
@@ -96,15 +96,41 @@ a { color: inherit; }
 
 .slot {
   border-radius: 9px;
-  border: 1px solid transparent;
+  border: 1px solid #2f3c55;
   font-size: .8rem;
   padding: .35rem;
   color: #fff;
+  font-weight: 700;
+  text-shadow: 0 1px 0 rgba(0, 0, 0, .45);
 }
-.slot.free { background: color-mix(in srgb, var(--free) 38%, #1c2f25); cursor: pointer; }
-.slot.free:hover { border-color: #66d39c; }
-.slot.booked { background: color-mix(in srgb, var(--booked) 45%, #23273a); opacity: .75; }
-.slot.blocked { background: color-mix(in srgb, var(--blocked) 52%, #2a2023); opacity: .8; }
+.slot.free {
+  background: color-mix(in srgb, var(--free) 66%, #13241d);
+  border-color: color-mix(in srgb, var(--free) 82%, #9ff7d8);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--free) 25%, #ffffff);
+  cursor: pointer;
+}
+.slot.free:hover { border-color: #9ff7d8; }
+.slot.booked {
+  background:
+    repeating-linear-gradient(
+      135deg,
+      color-mix(in srgb, var(--booked) 76%, #171a27) 0 6px,
+      color-mix(in srgb, var(--booked) 52%, #171a27) 6px 12px
+    );
+  border-color: color-mix(in srgb, var(--booked) 75%, #d8ccff);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--booked) 25%, #ffffff);
+  opacity: 1;
+}
+.slot.blocked {
+  background:
+    repeating-linear-gradient(
+      -45deg,
+      color-mix(in srgb, var(--blocked) 78%, #24161a) 0 5px,
+      color-mix(in srgb, var(--blocked) 50%, #24161a) 5px 10px
+    );
+  border-color: color-mix(in srgb, var(--blocked) 72%, #f2b2ba);
+  opacity: .95;
+}
 
 .events-stack { display: grid; gap: .4rem; }
 .event {
