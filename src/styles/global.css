@@ -217,6 +217,7 @@ label { font-size: .9rem; color: var(--muted); display: grid; gap: .2rem; }
 
 .lab-body { background: #0a0d14; }
 .lab-shell { max-width: 1800px; }
+.lab-bench-filter { min-width: min(280px, 100%); }
 .lab-column ul { list-style: none; margin: .35rem 0 0; padding: 0; display: grid; gap: .45rem; font-size: 1.15rem; }
 .lab-column li { padding: .5rem; border-radius: 8px; background: #1e2534; }
 .waitlist-item {
