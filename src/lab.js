@@ -9,6 +9,7 @@ import { normalizeBlockedPeriods } from './lib/blockedPeriods.js';
 
 const el = {
   sub: document.getElementById('labSub'),
+  benchFilter: document.getElementById('labBenchFilter'),
   board: document.getElementById('labBoard'),
   queue: document.getElementById('labQueue'),
   completeQueueSelected: document.getElementById('completeQueueSelected'),
@@ -17,8 +18,21 @@ const el = {
 };
 
 const params = new URLSearchParams(window.location.search);
-const benchParam = params.get('bench');
+let selectedBench = params.get('bench') || 'all';
 const selectedQueueIds = new Set();
+
+function renderBenchFilter(benches) {
+  const selectionIsAvailable = selectedBench === 'all'
+    || benches.some((bench) => String(bench.id) === selectedBench);
+
+  if (!selectionIsAvailable) selectedBench = 'all';
+
+  el.benchFilter.innerHTML = [
+    '<option value="all">All benches</option>',
+    ...benches.map((bench) => `<option value="${escapeHtml(bench.id)}">${escapeHtml(bench.name)}</option>`)
+  ].join('');
+  el.benchFilter.value = selectedBench;
+}
 
 function isMissingWaitlistTable(error) {
   const message = String(error?.message || '').toLowerCase();
@@ -102,9 +116,11 @@ async function loadLabView() {
     const bookings = normalizeBookings(bookingsRes.data);
     const blockedPeriods = normalizeBlockedPeriods(blockedRes.data);
     const waitlist = waitlistRes.error ? [] : (waitlistRes.data || []);
-    const benches = normalizeBenches(benchesRes.data)
-      .filter((b) => b.active)
-      .filter((b) => (benchParam ? String(b.id) === String(benchParam) : true));
+    const activeBenches = normalizeBenches(benchesRes.data).filter((bench) => bench.active);
+    renderBenchFilter(activeBenches);
+    const benches = selectedBench === 'all'
+      ? activeBenches
+      : activeBenches.filter((bench) => String(bench.id) === selectedBench);
 
     const dates = buildVisibleDates({
       daysAhead: Math.min(Number(settings.booking_days_ahead || 5), 3),
@@ -112,9 +128,10 @@ async function loadLabView() {
       startOffset: 0
     });
 
-    el.sub.textContent = benchParam
-      ? `Filtered bench id ${benchParam} • Auto-refresh every 30 seconds`
-      : 'All benches • Auto-refresh every 30 seconds';
+    const selectedBenchName = benches.length === 1 && selectedBench !== 'all'
+      ? benches[0].name
+      : 'All benches';
+    el.sub.textContent = `${selectedBenchName} • Auto-refresh every 30 seconds`;
 
     el.board.innerHTML = dates.map((d) => {
       const dateKey = formatDateKey(d);
@@ -151,6 +168,18 @@ async function loadLabView() {
 
 loadLabView();
 setInterval(loadLabView, 30000);
+
+el.benchFilter?.addEventListener('change', () => {
+  selectedBench = el.benchFilter.value;
+  const nextUrl = new URL(window.location.href);
+  if (selectedBench === 'all') {
+    nextUrl.searchParams.delete('bench');
+  } else {
+    nextUrl.searchParams.set('bench', selectedBench);
+  }
+  window.history.replaceState({}, '', nextUrl);
+  loadLabView();
+});
 
 el.completeQueueSelected?.addEventListener('click', async () => {
   try {

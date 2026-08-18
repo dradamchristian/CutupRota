@@ -13,7 +13,12 @@
           <h1>Today’s Cut-Up Bookings</h1>
           <p id="labSub" class="muted"></p>
         </div>
-        <a class="btn ghost" href="/">Back</a>
+        <label class="lab-bench-filter" for="labBenchFilter">
+          Show benches
+          <select id="labBenchFilter" aria-label="Filter lab view by bench">
+            <option value="all">All benches</option>
+          </select>
+        </label>
       </header>
 
       <section id="labError" class="message hidden"></section>
