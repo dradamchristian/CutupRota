@@ -1,5 +1,5 @@
 import { supabase } from './lib/supabaseClient.js';
-import { saveBooking, saveWaitlist } from './lib/api.js';
+import { loadBookings, saveBooking, saveWaitlist } from './lib/api.js';
 import { buildVisibleDates, combineDateTime, formatDateKey, formatLocalDateTime } from './lib/date.js';
 import { canBookAt, buildDayBlocks, getEnabledDurations } from './lib/slotBuilder.js';
 import { escapeHtml, fmtDateLabel, fmtTime } from './lib/format.js';
@@ -42,6 +42,9 @@ const state = {
   isSavingBooking: false
 };
 
+const BOARD_REFRESH_INTERVAL_MS = 15_000;
+let isLoadingData = false;
+
 function setMessage(text, type = 'info') {
   if (!text) {
     el.msg.classList.add('hidden');
@@ -73,12 +76,23 @@ function setBookingSaving(isSaving) {
   el.saveBooking.textContent = isSaving ? 'Saving…' : 'Save booking';
 }
 
+function mergeBookingIntoBoard(booking) {
+  if (!booking?.id) return;
+  state.bookings = normalizeBookings([
+    ...state.bookings.filter((item) => String(item.id) !== String(booking.id)),
+    booking
+  ]);
+  renderBoard();
+}
+
 function isMissingWaitlistTable(error) {
   const message = String(error?.message || '').toLowerCase();
   return message.includes('does not exist') || message.includes('could not find the table');
 }
 
 async function loadAllData() {
+  if (isLoadingData) return;
+  isLoadingData = true;
   setLoading(true);
   el.error.classList.add('hidden');
 
@@ -86,7 +100,7 @@ async function loadAllData() {
     const [settingsRes, benchesRes, bookingsRes, blockedRes, waitlistRes] = await Promise.all([
       supabase.from('app_settings').select('*').limit(1).single(),
       supabase.from('benches').select('*').order('display_order', { ascending: true }),
-      supabase.from('bookings').select('*'),
+      loadBookings(),
       supabase.from('blocked_periods').select('*').order('start_time', { ascending: true }),
       supabase
         .from('bench_waitlist')
@@ -95,7 +109,7 @@ async function loadAllData() {
         .order('requested_at', { ascending: true })
     ]);
 
-    const errors = [settingsRes, benchesRes, bookingsRes, blockedRes]
+    const errors = [settingsRes, benchesRes, blockedRes]
       .map((r) => r.error)
       .filter(Boolean);
 
@@ -103,7 +117,7 @@ async function loadAllData() {
 
     state.settings = settingsRes.data;
     state.benches = normalizeBenches(benchesRes.data).filter((b) => b.active);
-    state.bookings = normalizeBookings(bookingsRes.data);
+    state.bookings = normalizeBookings(bookingsRes);
     state.blockedPeriods = normalizeBlockedPeriods(blockedRes.data);
     state.waitlist = waitlistRes.error ? [] : (waitlistRes.data || []);
 
@@ -118,6 +132,7 @@ async function loadAllData() {
     el.error.classList.remove('hidden');
     el.error.textContent = `Could not load booking board: ${err.message}`;
   } finally {
+    isLoadingData = false;
     setLoading(false);
   }
 }
@@ -300,10 +315,13 @@ async function createBooking(formData) {
     end_at: formatLocalDateTime(end)
   };
 
-  await saveBooking({ action: 'create', booking: payload });
+  const result = await saveBooking({ action: 'create', booking: payload });
 
   setMessage('Booking created.', 'success');
   await loadAllData();
+  // Keep the authoritative create result visible even if a stale or
+  // misconfigured read response omits the row that was just inserted.
+  mergeBookingIntoBoard(result.booking);
 }
 
 async function handleBookingSave() {
@@ -321,6 +339,12 @@ async function handleBookingSave() {
     await createBooking(new FormData(el.bookingForm));
     el.bookingDialog.close();
   } catch (err) {
+    if (String(err.message || '').toLowerCase().includes('slot was just booked')) {
+      // Replace the stale board immediately so the conflicting booking is
+      // visible instead of continuing to present the slot as free.
+      await loadAllData();
+      mergeBookingIntoBoard(err.responseData?.conflicting_booking);
+    }
     const message = `Booking failed: ${err.message}`;
     setBookingFormError(message);
     setMessage(message, 'error');
@@ -369,6 +393,16 @@ el.saveBooking.addEventListener('click', async () => {
 
 el.cancelBooking.addEventListener('click', () => el.bookingDialog.close());
 el.cancelDelete.addEventListener('click', () => el.deleteDialog.close());
+
+window.setInterval(() => {
+  if (document.visibilityState === 'visible' && !state.isSavingBooking) {
+    loadAllData();
+  }
+}, BOARD_REFRESH_INTERVAL_MS);
+
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') loadAllData();
+});
 
 el.deleteForm.addEventListener('submit', async (event) => {
   event.preventDefault();

@@ -40,6 +40,14 @@ function normalizeText(value) {
   return value.trim();
 }
 
+function isExactBookingMatch(existing, booking) {
+  return existing.start_time === toPostgresTime(booking?.start_at)
+    && existing.end_time === toPostgresTime(booking?.end_at)
+    && normalizeText(existing.booked_by) === normalizeText(booking?.booked_by)
+    && normalizeText(existing.specialties) === normalizeText(booking?.specialties)
+    && normalizeText(existing.notes) === normalizeText(booking?.notes);
+}
+
 async function findExactBookingMatch(supabase, booking) {
   const bookingDate = toPostgresDate(booking?.start_at);
   const startTime = toPostgresTime(booking?.start_at);
@@ -59,11 +67,53 @@ async function findExactBookingMatch(supabase, booking) {
   if (error) throw error;
   if (!data) return null;
 
-  const sameBooker = normalizeText(data.booked_by) === normalizeText(booking.booked_by);
-  const sameSpecialties = normalizeText(data.specialties) === normalizeText(booking.specialties);
-  const sameNotes = normalizeText(data.notes) === normalizeText(booking.notes);
+  return isExactBookingMatch(data, booking) ? data : null;
+}
 
-  return sameBooker && sameSpecialties && sameNotes ? data : null;
+async function findOverlappingBooking(supabase, booking) {
+  const bookingDate = toPostgresDate(booking?.start_at);
+  const startTime = toPostgresTime(booking?.start_at);
+  const endTime = toPostgresTime(booking?.end_at);
+
+  const { data, error } = await supabase
+    .from('bookings')
+    .select('id, bench_id, booking_date, start_time, end_time, booked_by, specialties, notes')
+    .eq('bench_id', booking.bench_id)
+    .eq('booking_date', bookingDate)
+    .lt('start_time', endTime)
+    .gt('end_time', startTime)
+    .limit(1)
+    .maybeSingle();
+
+  if (error) throw error;
+  return data;
+}
+
+async function listCurrentBookings(supabase) {
+  // PostgREST projects commonly cap a response at 1,000 rows. Reading the
+  // entire table in ascending order eventually returns only old bookings, so
+  // newly-created rows appear briefly (from the create response) and then
+  // vanish on the next board refresh. Past bookings are not used by either
+  // board, and pagination keeps this correct even with a busy future rota.
+  const bookingDate = toPostgresDate(new Date());
+  // Keep pages below even conservatively configured Supabase row limits.
+  const pageSize = 100;
+  const bookings = [];
+
+  for (let from = 0; ; from += pageSize) {
+    const { data, error } = await supabase
+      .from('bookings')
+      .select('*')
+      .gte('booking_date', bookingDate)
+      .order('booking_date', { ascending: true })
+      .order('start_time', { ascending: true })
+      .range(from, from + pageSize - 1);
+
+    if (error) throw error;
+    const page = data || [];
+    bookings.push(...page);
+    if (page.length < pageSize) return bookings;
+  }
 }
 
 async function insertBookingWithFallback(supabase, payload) {
@@ -132,7 +182,7 @@ export async function handler(event) {
 
   try {
     const parseValidationStart = Date.now();
-    const { action, booking, id } = parseBody(event);
+    const { action, booking, id, pin } = parseBody(event);
     const supabase = getAdminClient();
     const parseValidationDurationMs = Date.now() - parseValidationStart;
 
@@ -140,6 +190,26 @@ export async function handler(event) {
       action: action || null,
       duration_ms: parseValidationDurationMs
     });
+
+    if (action === 'list') {
+      const bookings = await listCurrentBookings(supabase);
+      return json(200, { ok: true, bookings });
+    }
+
+    if (action === 'purge_past') {
+      if (!process.env.ADMIN_PIN || pin !== process.env.ADMIN_PIN) {
+        return json(401, { error: 'Invalid admin PIN.' });
+      }
+
+      const bookingDate = toPostgresDate(new Date());
+      const { error, count } = await supabase
+        .from('bookings')
+        .delete({ count: 'exact' })
+        .lt('booking_date', bookingDate);
+
+      if (error) throw error;
+      return json(200, { ok: true, deleted: count || 0, before: bookingDate });
+    }
 
     if (action === 'create') {
       const createPathStart = Date.now();
@@ -161,34 +231,42 @@ export async function handler(event) {
       }
 
       const overlapCheckStart = Date.now();
-      let overlapCount = null;
       try {
-        const { data: overlappingRows, error: overlapError } = await supabase
-          .from('bookings')
-          .select('id')
-          .eq('bench_id', booking.bench_id)
-          .lt('start_time', toPostgresTime(booking.end_at))
-          .gt('end_time', toPostgresTime(booking.start_at));
-
-        if (overlapError) {
-          console.warn('[bookings] overlap check warning', {
-            message: overlapError?.message || null,
-            details: overlapError?.details || null,
-            hint: overlapError?.hint || null,
-            code: overlapError?.code || null
+        const overlappingBooking = await findOverlappingBooking(supabase, booking);
+        if (overlappingBooking) {
+          console.log('[bookings] overlap check duration', {
+            duration_ms: Date.now() - overlapCheckStart,
+            rows: 1
           });
-        } else {
-          overlapCount = Array.isArray(overlappingRows) ? overlappingRows.length : 0;
+
+          if (isExactBookingMatch(overlappingBooking, booking)) {
+            return json(200, {
+              ok: true,
+              deduplicated: true,
+              booking_id: overlappingBooking.id,
+              booking: overlappingBooking
+            });
+          }
+
+          return json(409, {
+            error: 'That slot was just booked already. Please refresh and choose another time.',
+            conflicting_booking: overlappingBooking
+          });
         }
       } catch (overlapCheckError) {
+        // The database exclusion constraint remains the authority if this
+        // advisory read fails or a concurrent insert wins the race.
         console.warn('[bookings] overlap check warning', {
-          message: overlapCheckError?.message || null
+          message: overlapCheckError?.message || null,
+          details: overlapCheckError?.details || null,
+          hint: overlapCheckError?.hint || null,
+          code: overlapCheckError?.code || null
         });
       }
 
       console.log('[bookings] overlap check duration', {
         duration_ms: Date.now() - overlapCheckStart,
-        rows: overlapCount
+        rows: 0
       });
 
       const blockedCheckStart = Date.now();
@@ -248,6 +326,7 @@ export async function handler(event) {
         if (error?.code === '23P01') {
           const postInsertStart = Date.now();
           const existing = await findExactBookingMatch(supabase, booking);
+          const conflictingBooking = existing || await findOverlappingBooking(supabase, booking);
           postInsertDurationMs = Date.now() - postInsertStart;
           console.log('[bookings] follow-up select/read duration', {
             duration_ms: postInsertDurationMs
@@ -257,13 +336,21 @@ export async function handler(event) {
             console.log('[bookings] total request duration', {
               duration_ms: Date.now() - requestStart
             });
-            return json(200, { ok: true, deduplicated: true, booking_id: existing.id });
+            return json(200, {
+              ok: true,
+              deduplicated: true,
+              booking_id: existing.id,
+              booking: existing
+            });
           }
 
           console.log('[bookings] total request duration', {
             duration_ms: Date.now() - requestStart
           });
-          return json(409, { error: 'That slot was just booked already. Please refresh and choose another time.' });
+          return json(409, {
+            error: 'That slot was just booked already. Please refresh and choose another time.',
+            conflicting_booking: conflictingBooking
+          });
         }
 
         return json(500, {

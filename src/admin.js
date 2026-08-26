@@ -1,5 +1,5 @@
 import { supabase } from './lib/supabaseClient.js';
-import { saveBench, saveBlockedPeriod, updateSettings, verifyAdminPin } from './lib/api.js';
+import { deletePastBookings, saveBench, saveBlockedPeriod, updateSettings, verifyAdminPin } from './lib/api.js';
 import { escapeHtml } from './lib/format.js';
 import { createBenchPayload, normalizeBenches } from './lib/benches.js';
 import { normalizeBlockedPeriod, normalizeBlockedPeriods } from './lib/blockedPeriods.js';
@@ -14,7 +14,8 @@ const el = {
   benchesList: document.getElementById('benchesList'),
   blockedList: document.getElementById('blockedList'),
   addBench: document.getElementById('addBench'),
-  addBlocked: document.getElementById('addBlocked')
+  addBlocked: document.getElementById('addBlocked'),
+  deletePastBookings: document.getElementById('deletePastBookings')
 };
 
 const state = {
@@ -22,6 +23,8 @@ const state = {
   benches: [],
   blockedPeriods: []
 };
+
+let verifiedAdminPin = '';
 
 function parseId(value) {
   if (value == null) return null;
@@ -199,6 +202,7 @@ el.pinForm.addEventListener('submit', async (event) => {
   event.preventDefault();
   try {
     await verifyAdminPin(el.pinInput.value);
+    verifiedAdminPin = el.pinInput.value;
     el.pinSection.classList.add('hidden');
     el.main.classList.remove('hidden');
     await loadAdminData();
@@ -268,5 +272,20 @@ el.addBlocked.addEventListener('click', async () => {
     await loadAdminData();
   } catch (err) {
     flash(`Add blocked period failed: ${err.message}`, 'error');
+  }
+});
+
+el.deletePastBookings.addEventListener('click', async () => {
+  const confirmed = confirm('Permanently delete every booking before today? This cannot be undone.');
+  if (!confirmed) return;
+
+  el.deletePastBookings.disabled = true;
+  try {
+    const result = await deletePastBookings(verifiedAdminPin);
+    flash(`${result.deleted} past booking${result.deleted === 1 ? '' : 's'} deleted.`, 'success');
+  } catch (err) {
+    flash(`Past booking deletion failed: ${err.message}`, 'error');
+  } finally {
+    el.deletePastBookings.disabled = false;
   }
 });

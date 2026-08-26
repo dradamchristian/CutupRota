@@ -16,7 +16,10 @@ export function getAdminClient() {
 export function json(statusCode, body) {
   return {
     statusCode,
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      'Cache-Control': 'no-store, max-age=0'
+    },
     body: JSON.stringify(body)
   };
 }
