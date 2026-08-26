@@ -1,5 +1,5 @@
 import { supabase } from './lib/supabaseClient.js';
-import { saveBooking, saveWaitlist } from './lib/api.js';
+import { loadBookings, saveBooking, saveWaitlist } from './lib/api.js';
 import { buildVisibleDates, combineDateTime, formatDateKey, formatLocalDateTime } from './lib/date.js';
 import { canBookAt, buildDayBlocks, getEnabledDurations } from './lib/slotBuilder.js';
 import { escapeHtml, fmtDateLabel, fmtTime } from './lib/format.js';
@@ -86,7 +86,7 @@ async function loadAllData() {
     const [settingsRes, benchesRes, bookingsRes, blockedRes, waitlistRes] = await Promise.all([
       supabase.from('app_settings').select('*').limit(1).single(),
       supabase.from('benches').select('*').order('display_order', { ascending: true }),
-      supabase.from('bookings').select('*'),
+      loadBookings(),
       supabase.from('blocked_periods').select('*').order('start_time', { ascending: true }),
       supabase
         .from('bench_waitlist')
@@ -95,7 +95,7 @@ async function loadAllData() {
         .order('requested_at', { ascending: true })
     ]);
 
-    const errors = [settingsRes, benchesRes, bookingsRes, blockedRes]
+    const errors = [settingsRes, benchesRes, blockedRes]
       .map((r) => r.error)
       .filter(Boolean);
 
@@ -103,7 +103,7 @@ async function loadAllData() {
 
     state.settings = settingsRes.data;
     state.benches = normalizeBenches(benchesRes.data).filter((b) => b.active);
-    state.bookings = normalizeBookings(bookingsRes.data);
+    state.bookings = normalizeBookings(bookingsRes);
     state.blockedPeriods = normalizeBlockedPeriods(blockedRes.data);
     state.waitlist = waitlistRes.error ? [] : (waitlistRes.data || []);
 

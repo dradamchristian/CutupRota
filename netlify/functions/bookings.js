@@ -164,6 +164,17 @@ export async function handler(event) {
       duration_ms: parseValidationDurationMs
     });
 
+    if (action === 'list') {
+      const { data, error } = await supabase
+        .from('bookings')
+        .select('*')
+        .order('booking_date', { ascending: true })
+        .order('start_time', { ascending: true });
+
+      if (error) throw error;
+      return json(200, { ok: true, bookings: data || [] });
+    }
+
     if (action === 'create') {
       const createPathStart = Date.now();
       console.log('[bookings] create path entered', { entered: true });

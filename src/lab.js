@@ -2,7 +2,7 @@ import { supabase } from './lib/supabaseClient.js';
 import { buildVisibleDates, formatDateKey } from './lib/date.js';
 import { buildDayBlocks } from './lib/slotBuilder.js';
 import { escapeHtml, fmtDateLong, fmtTime } from './lib/format.js';
-import { saveWaitlist } from './lib/api.js';
+import { loadBookings, saveWaitlist } from './lib/api.js';
 import { normalizeBookings } from './lib/bookings.js';
 import { normalizeBenches } from './lib/benches.js';
 import { normalizeBlockedPeriods } from './lib/blockedPeriods.js';
@@ -97,7 +97,7 @@ async function loadLabView() {
     const [settingsRes, benchesRes, bookingsRes, blockedRes, waitlistRes] = await Promise.all([
       supabase.from('app_settings').select('*').limit(1).single(),
       supabase.from('benches').select('*').order('display_order', { ascending: true }),
-      supabase.from('bookings').select('*'),
+      loadBookings(),
       supabase.from('blocked_periods').select('*'),
       supabase
         .from('bench_waitlist')
@@ -108,12 +108,11 @@ async function loadLabView() {
 
     if (settingsRes.error) throw settingsRes.error;
     if (benchesRes.error) throw benchesRes.error;
-    if (bookingsRes.error) throw bookingsRes.error;
     if (blockedRes.error) throw blockedRes.error;
     if (waitlistRes.error && !isMissingWaitlistTable(waitlistRes.error)) throw waitlistRes.error;
 
     const settings = settingsRes.data;
-    const bookings = normalizeBookings(bookingsRes.data);
+    const bookings = normalizeBookings(bookingsRes);
     const blockedPeriods = normalizeBlockedPeriods(blockedRes.data);
     const waitlist = waitlistRes.error ? [] : (waitlistRes.data || []);
     const activeBenches = normalizeBenches(benchesRes.data).filter((bench) => bench.active);

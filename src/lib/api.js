@@ -78,6 +78,11 @@ export function saveBooking(payload) {
   return netlifyCall('bookings', payload);
 }
 
+export async function loadBookings() {
+  const response = await netlifyCall('bookings', { action: 'list' });
+  return response.bookings || [];
+}
+
 export function saveWaitlist(payload) {
   return netlifyCall('waitlist', payload);
 }
