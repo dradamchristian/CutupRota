@@ -51,7 +51,12 @@ async function netlifyCall(path, payload) {
       console.error('[api] Request failed', { url, error });
       lastError = error;
       if (error?.skipFallback) throw error;
-      if (base === bases.at(-1)) throw error;
+
+      // A transport failure is ambiguous: the function may have committed a
+      // mutation before its response was lost. Retrying the same request at a
+      // fallback URL can therefore create a booking and then report the retry
+      // as an overlap. Only an explicit 404 above is safe to retry elsewhere.
+      throw error;
     }
   }
 
@@ -76,6 +81,11 @@ export function saveBlockedPeriod(payload) {
 
 export function saveBooking(payload) {
   return netlifyCall('bookings', payload);
+}
+
+export async function loadBookings() {
+  const response = await netlifyCall('bookings', { action: 'list' });
+  return response.bookings || [];
 }
 
 export function saveWaitlist(payload) {

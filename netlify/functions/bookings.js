@@ -40,6 +40,14 @@ function normalizeText(value) {
   return value.trim();
 }
 
+function isExactBookingMatch(existing, booking) {
+  return existing.start_time === toPostgresTime(booking?.start_at)
+    && existing.end_time === toPostgresTime(booking?.end_at)
+    && normalizeText(existing.booked_by) === normalizeText(booking?.booked_by)
+    && normalizeText(existing.specialties) === normalizeText(booking?.specialties)
+    && normalizeText(existing.notes) === normalizeText(booking?.notes);
+}
+
 async function findExactBookingMatch(supabase, booking) {
   const bookingDate = toPostgresDate(booking?.start_at);
   const startTime = toPostgresTime(booking?.start_at);
@@ -59,11 +67,26 @@ async function findExactBookingMatch(supabase, booking) {
   if (error) throw error;
   if (!data) return null;
 
-  const sameBooker = normalizeText(data.booked_by) === normalizeText(booking.booked_by);
-  const sameSpecialties = normalizeText(data.specialties) === normalizeText(booking.specialties);
-  const sameNotes = normalizeText(data.notes) === normalizeText(booking.notes);
+  return isExactBookingMatch(data, booking) ? data : null;
+}
 
-  return sameBooker && sameSpecialties && sameNotes ? data : null;
+async function findOverlappingBooking(supabase, booking) {
+  const bookingDate = toPostgresDate(booking?.start_at);
+  const startTime = toPostgresTime(booking?.start_at);
+  const endTime = toPostgresTime(booking?.end_at);
+
+  const { data, error } = await supabase
+    .from('bookings')
+    .select('id, bench_id, booking_date, start_time, end_time, booked_by, specialties, notes')
+    .eq('bench_id', booking.bench_id)
+    .eq('booking_date', bookingDate)
+    .lt('start_time', endTime)
+    .gt('end_time', startTime)
+    .limit(1)
+    .maybeSingle();
+
+  if (error) throw error;
+  return data;
 }
 
 async function insertBookingWithFallback(supabase, payload) {
@@ -141,6 +164,17 @@ export async function handler(event) {
       duration_ms: parseValidationDurationMs
     });
 
+    if (action === 'list') {
+      const { data, error } = await supabase
+        .from('bookings')
+        .select('*')
+        .order('booking_date', { ascending: true })
+        .order('start_time', { ascending: true });
+
+      if (error) throw error;
+      return json(200, { ok: true, bookings: data || [] });
+    }
+
     if (action === 'create') {
       const createPathStart = Date.now();
       console.log('[bookings] create path entered', { entered: true });
@@ -161,34 +195,38 @@ export async function handler(event) {
       }
 
       const overlapCheckStart = Date.now();
-      let overlapCount = null;
       try {
-        const { data: overlappingRows, error: overlapError } = await supabase
-          .from('bookings')
-          .select('id')
-          .eq('bench_id', booking.bench_id)
-          .lt('start_time', toPostgresTime(booking.end_at))
-          .gt('end_time', toPostgresTime(booking.start_at));
-
-        if (overlapError) {
-          console.warn('[bookings] overlap check warning', {
-            message: overlapError?.message || null,
-            details: overlapError?.details || null,
-            hint: overlapError?.hint || null,
-            code: overlapError?.code || null
+        const overlappingBooking = await findOverlappingBooking(supabase, booking);
+        if (overlappingBooking) {
+          console.log('[bookings] overlap check duration', {
+            duration_ms: Date.now() - overlapCheckStart,
+            rows: 1
           });
-        } else {
-          overlapCount = Array.isArray(overlappingRows) ? overlappingRows.length : 0;
+
+          if (isExactBookingMatch(overlappingBooking, booking)) {
+            return json(200, {
+              ok: true,
+              deduplicated: true,
+              booking_id: overlappingBooking.id
+            });
+          }
+
+          return json(409, { error: 'That slot was just booked already. Please refresh and choose another time.' });
         }
       } catch (overlapCheckError) {
+        // The database exclusion constraint remains the authority if this
+        // advisory read fails or a concurrent insert wins the race.
         console.warn('[bookings] overlap check warning', {
-          message: overlapCheckError?.message || null
+          message: overlapCheckError?.message || null,
+          details: overlapCheckError?.details || null,
+          hint: overlapCheckError?.hint || null,
+          code: overlapCheckError?.code || null
         });
       }
 
       console.log('[bookings] overlap check duration', {
         duration_ms: Date.now() - overlapCheckStart,
-        rows: overlapCount
+        rows: 0
       });
 
       const blockedCheckStart = Date.now();
