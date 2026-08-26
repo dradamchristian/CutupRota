@@ -74,6 +74,11 @@ Also verify that the Netlify `SUPABASE_SERVICE_ROLE_KEY` value is the Supabase
 `service_role` key, not the browser-safe `anon` key. After changing the policy or
 environment variable, trigger a new Netlify deploy and reload the page.
 
+The server booking list intentionally requests only today and future dates and
+paginates the result. Supabase/PostgREST normally limits a response to 1,000 rows;
+without the date filter, a sufficiently large booking history can fill the response
+with old rows and make newly-created bookings disappear on the next refresh.
+
 ## Run locally
 
 ```bash
