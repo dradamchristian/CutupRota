@@ -49,3 +49,27 @@ test('still tries the alternate endpoint after an explicit 404', async (t) => {
   await assert.doesNotReject(saveBooking({ action: 'create', booking: { bench_id: 'bench-1' } }));
   assert.deepEqual(calls, ['/api/bookings', '/.netlify/functions/bookings']);
 });
+
+test('preserves conflict booking data on API errors', async (t) => {
+  const originalFetch = globalThis.fetch;
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  const conflictingBooking = { id: 'booking-1', booking_date: '2026-08-26' };
+  globalThis.fetch = async () => new Response(JSON.stringify({
+    error: 'That slot was just booked already.',
+    conflicting_booking: conflictingBooking
+  }), {
+    status: 409,
+    headers: { 'Content-Type': 'application/json' }
+  });
+
+  await assert.rejects(
+    saveBooking({ action: 'create', booking: { bench_id: 'bench-1' } }),
+    (error) => {
+      assert.deepEqual(error.responseData?.conflicting_booking, conflictingBooking);
+      return true;
+    }
+  );
+});

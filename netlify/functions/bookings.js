@@ -207,11 +207,15 @@ export async function handler(event) {
             return json(200, {
               ok: true,
               deduplicated: true,
-              booking_id: overlappingBooking.id
+              booking_id: overlappingBooking.id,
+              booking: overlappingBooking
             });
           }
 
-          return json(409, { error: 'That slot was just booked already. Please refresh and choose another time.' });
+          return json(409, {
+            error: 'That slot was just booked already. Please refresh and choose another time.',
+            conflicting_booking: overlappingBooking
+          });
         }
       } catch (overlapCheckError) {
         // The database exclusion constraint remains the authority if this
@@ -286,6 +290,7 @@ export async function handler(event) {
         if (error?.code === '23P01') {
           const postInsertStart = Date.now();
           const existing = await findExactBookingMatch(supabase, booking);
+          const conflictingBooking = existing || await findOverlappingBooking(supabase, booking);
           postInsertDurationMs = Date.now() - postInsertStart;
           console.log('[bookings] follow-up select/read duration', {
             duration_ms: postInsertDurationMs
@@ -295,13 +300,21 @@ export async function handler(event) {
             console.log('[bookings] total request duration', {
               duration_ms: Date.now() - requestStart
             });
-            return json(200, { ok: true, deduplicated: true, booking_id: existing.id });
+            return json(200, {
+              ok: true,
+              deduplicated: true,
+              booking_id: existing.id,
+              booking: existing
+            });
           }
 
           console.log('[bookings] total request duration', {
             duration_ms: Date.now() - requestStart
           });
-          return json(409, { error: 'That slot was just booked already. Please refresh and choose another time.' });
+          return json(409, {
+            error: 'That slot was just booked already. Please refresh and choose another time.',
+            conflicting_booking: conflictingBooking
+          });
         }
 
         return json(500, {

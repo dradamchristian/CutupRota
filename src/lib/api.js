@@ -43,6 +43,7 @@ async function netlifyCall(path, payload) {
           continue;
         }
 
+        error.responseData = data;
         error.skipFallback = true;
         throw error;
       }

@@ -76,6 +76,15 @@ function setBookingSaving(isSaving) {
   el.saveBooking.textContent = isSaving ? 'Saving…' : 'Save booking';
 }
 
+function mergeBookingIntoBoard(booking) {
+  if (!booking?.id) return;
+  state.bookings = normalizeBookings([
+    ...state.bookings.filter((item) => String(item.id) !== String(booking.id)),
+    booking
+  ]);
+  renderBoard();
+}
+
 function isMissingWaitlistTable(error) {
   const message = String(error?.message || '').toLowerCase();
   return message.includes('does not exist') || message.includes('could not find the table');
@@ -306,10 +315,13 @@ async function createBooking(formData) {
     end_at: formatLocalDateTime(end)
   };
 
-  await saveBooking({ action: 'create', booking: payload });
+  const result = await saveBooking({ action: 'create', booking: payload });
 
   setMessage('Booking created.', 'success');
   await loadAllData();
+  // Keep the authoritative create result visible even if a stale or
+  // misconfigured read response omits the row that was just inserted.
+  mergeBookingIntoBoard(result.booking);
 }
 
 async function handleBookingSave() {
@@ -331,6 +343,7 @@ async function handleBookingSave() {
       // Replace the stale board immediately so the conflicting booking is
       // visible instead of continuing to present the slot as free.
       await loadAllData();
+      mergeBookingIntoBoard(err.responseData?.conflicting_booking);
     }
     const message = `Booking failed: ${err.message}`;
     setBookingFormError(message);
