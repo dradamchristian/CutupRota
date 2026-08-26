@@ -3,6 +3,16 @@
   publish = "dist"
   functions = "netlify/functions"
 
+[[headers]]
+  for = "/"
+  [headers.values]
+    Cache-Control = "no-cache, must-revalidate"
+
+[[headers]]
+  for = "/*.html"
+  [headers.values]
+    Cache-Control = "no-cache, must-revalidate"
+
 [[redirects]]
   from = "/api/*"
   to = "/.netlify/functions/:splat"

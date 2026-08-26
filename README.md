@@ -57,6 +57,28 @@ Notes:
 - select access is done directly in the browser app, so the read policy above is required when RLS is enabled.
 - if your `benches.id` is not `uuid`, set `bench_id` to exactly match your existing `benches.id` type.
 
+## Booking board shows occupied slots as free
+
+The booking board must be able to read `public.bookings`. With Row Level Security
+enabled, a missing `SELECT` policy does **not** necessarily produce an HTTP error:
+Supabase can return `200` with an empty array. Inserts into those apparently free
+slots are then correctly rejected by the `bookings_no_overlap` database constraint.
+
+Apply `supabase/migrations/20260826_restore_booking_read_policy.sql` in the Supabase
+SQL editor if bookings exist in Table Editor but do not appear on the board. The
+policy makes bookings readable by the same anonymous users who can already view
+the booking board; booking creation and deletion remain handled by Netlify
+Functions using `SUPABASE_SERVICE_ROLE_KEY`.
+
+Also verify that the Netlify `SUPABASE_SERVICE_ROLE_KEY` value is the Supabase
+`service_role` key, not the browser-safe `anon` key. After changing the policy or
+environment variable, trigger a new Netlify deploy and reload the page.
+
+The server booking list intentionally requests only today and future dates and
+paginates the result. Supabase/PostgREST normally limits a response to 1,000 rows;
+without the date filter, a sufficiently large booking history can fill the response
+with old rows and make newly-created bookings disappear on the next refresh.
+
 ## Run locally
 
 ```bash
