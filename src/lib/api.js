@@ -69,6 +69,10 @@ export function verifyAdminPin(pin) {
   return netlifyCall('verify-admin-pin', { pin });
 }
 
+export function deleteHistoricalBookings(pin) {
+  return netlifyCall('delete-historical-bookings', { pin });
+}
+
 export function updateSettings(payload) {
   return netlifyCall('update-settings', payload);
 }

@@ -1,5 +1,11 @@
 import { supabase } from './lib/supabaseClient.js';
-import { saveBench, saveBlockedPeriod, updateSettings, verifyAdminPin } from './lib/api.js';
+import {
+  deleteHistoricalBookings,
+  saveBench,
+  saveBlockedPeriod,
+  updateSettings,
+  verifyAdminPin
+} from './lib/api.js';
 import { escapeHtml } from './lib/format.js';
 import { createBenchPayload, normalizeBenches } from './lib/benches.js';
 import { normalizeBlockedPeriod, normalizeBlockedPeriods } from './lib/blockedPeriods.js';
@@ -14,13 +20,15 @@ const el = {
   benchesList: document.getElementById('benchesList'),
   blockedList: document.getElementById('blockedList'),
   addBench: document.getElementById('addBench'),
-  addBlocked: document.getElementById('addBlocked')
+  addBlocked: document.getElementById('addBlocked'),
+  deleteHistoricalBookings: document.getElementById('deleteHistoricalBookings')
 };
 
 const state = {
   settings: null,
   benches: [],
-  blockedPeriods: []
+  blockedPeriods: [],
+  adminPin: ''
 };
 
 function parseId(value) {
@@ -199,6 +207,7 @@ el.pinForm.addEventListener('submit', async (event) => {
   event.preventDefault();
   try {
     await verifyAdminPin(el.pinInput.value);
+    state.adminPin = el.pinInput.value;
     el.pinSection.classList.add('hidden');
     el.main.classList.remove('hidden');
     await loadAdminData();
@@ -268,5 +277,23 @@ el.addBlocked.addEventListener('click', async () => {
     await loadAdminData();
   } catch (err) {
     flash(`Add blocked period failed: ${err.message}`, 'error');
+  }
+});
+
+el.deleteHistoricalBookings.addEventListener('click', async () => {
+  if (!confirm('Permanently delete every booking before today? This cannot be undone.')) return;
+
+  el.deleteHistoricalBookings.disabled = true;
+  el.deleteHistoricalBookings.textContent = 'Deleting…';
+
+  try {
+    const result = await deleteHistoricalBookings(state.adminPin);
+    const count = Number(result.deletedCount || 0);
+    flash(`${count} historical booking${count === 1 ? '' : 's'} deleted.`, 'success');
+  } catch (err) {
+    flash(`Historical booking deletion failed: ${err.message}`, 'error');
+  } finally {
+    el.deleteHistoricalBookings.disabled = false;
+    el.deleteHistoricalBookings.textContent = 'Delete historical bookings';
   }
 });
