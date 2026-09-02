@@ -145,7 +145,13 @@ async function loadLabView() {
 
         const items = day.blocks
           .filter((x) => x.kind === 'booked')
-          .map(({ booking }) => `<li><strong>${fmtTime(booking.start_at)}-${fmtTime(booking.end_at)}</strong> ${escapeHtml(booking.booked_by)} (${escapeHtml(booking.specialties)})</li>`)
+          .map(({ booking }) => {
+            const notes = String(booking.notes || '').trim();
+            return `<li>
+              <div><strong>${fmtTime(booking.start_at)}-${fmtTime(booking.end_at)}</strong> ${escapeHtml(booking.booked_by)} (${escapeHtml(booking.specialties)})</div>
+              ${notes ? `<div class="booking-notes"><span aria-hidden="true">💬</span> ${escapeHtml(notes)}</div>` : ''}
+            </li>`;
+          })
           .join('') || '<li class="muted">No bookings</li>';
 
         return `<section class="bench-column lab-column"><h3>${escapeHtml(bench.name)}</h3><ul>${items}</ul></section>`;
