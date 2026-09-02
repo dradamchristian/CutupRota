@@ -224,11 +224,13 @@ function renderBenchDayColumn(dateKey, bench) {
     .filter((block) => block.kind === 'booked')
     .map((block) => {
       const b = block.booking;
+      const notes = String(b.notes || '').trim();
       return `
       <button class="event booked" data-action="delete-booking" data-booking="${b.id}">
         <strong>${escapeHtml(b.booked_by)}</strong>
         <span>${escapeHtml(b.specialties)}</span>
         <small>${fmtTime(b.start_at)}–${fmtTime(b.end_at)}</small>
+        ${notes ? `<span class="booking-notes"><span aria-hidden="true">💬</span> ${escapeHtml(notes)}</span>` : ''}
       </button>`;
     }).join('');
 
