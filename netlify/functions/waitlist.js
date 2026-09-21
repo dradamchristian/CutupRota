@@ -62,19 +62,24 @@ export async function handler(event) {
 
     if (action === 'complete') {
       if (!id) return json(400, { error: 'Missing waitlist id.' });
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from('bench_waitlist')
         .update({ completed_at: new Date().toISOString() })
-        .eq('id', id);
+        .eq('id', id)
+        .select('*')
+        .limit(1)
+        .maybeSingle();
       if (error) throw error;
-      return json(200, { ok: true });
+      if (!data) return json(404, { error: 'Waitlist entry not found.' });
+      return json(200, { ok: true, id: data.id, entry: data });
     }
 
     if (action === 'delete') {
       if (!id) return json(400, { error: 'Missing waitlist id.' });
-      const { error } = await supabase.from('bench_waitlist').delete().eq('id', id);
+      const { data, error } = await supabase.from('bench_waitlist').delete().eq('id', id).select('*').limit(1).maybeSingle();
       if (error) throw error;
-      return json(200, { ok: true });
+      if (!data) return json(404, { error: 'Waitlist entry not found.' });
+      return json(200, { ok: true, id: data.id, entry: data });
     }
 
     return json(400, { error: 'Unsupported action.' });

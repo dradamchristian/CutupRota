@@ -7,6 +7,7 @@ import { normalizeBookings } from './lib/bookings.js';
 import { normalizeBenches } from './lib/benches.js';
 import { normalizeBlockedPeriods } from './lib/blockedPeriods.js';
 import { shouldRefresh } from './lib/refreshPolicy.js';
+import { removeById, upsertById } from './lib/stateUpdates.js';
 
 const el = {
   board: document.getElementById('board'),
@@ -28,7 +29,8 @@ const el = {
   deleteDialog: document.getElementById('deleteDialog'),
   deleteForm: document.getElementById('deleteForm'),
   deleteMeta: document.getElementById('deleteMeta'),
-  cancelDelete: document.getElementById('cancelDelete')
+  cancelDelete: document.getElementById('cancelDelete'),
+  refreshBoard: document.getElementById('refreshBoard')
 };
 
 const state = {
@@ -80,10 +82,7 @@ function setBookingSaving(isSaving) {
 
 function mergeBookingIntoBoard(booking) {
   if (!booking?.id) return;
-  state.bookings = normalizeBookings([
-    ...state.bookings.filter((item) => String(item.id) !== String(booking.id)),
-    booking
-  ]);
+  state.bookings = normalizeBookings(upsertById(state.bookings, booking));
   renderBoard();
 }
 
@@ -348,10 +347,6 @@ async function createBooking(formData) {
 
   setMessage('Booking created.', 'success');
   mergeBookingIntoBoard(result.booking);
-  await refreshDynamicData();
-  // Keep the authoritative create result visible even if a stale or
-  // misconfigured read response omits the row that was just inserted.
-  mergeBookingIntoBoard(result.booking);
 }
 
 async function handleBookingSave() {
@@ -369,10 +364,10 @@ async function handleBookingSave() {
     await createBooking(new FormData(el.bookingForm));
     el.bookingDialog.close();
   } catch (err) {
+    await refreshDynamicData();
     if (String(err.message || '').toLowerCase().includes('slot was just booked')) {
       // Replace the stale board immediately so the conflicting booking is
       // visible instead of continuing to present the slot as free.
-      await refreshDynamicData();
       mergeBookingIntoBoard(err.responseData?.conflicting_booking);
     }
     const message = `Booking failed: ${err.message}`;
@@ -387,9 +382,8 @@ async function deleteBooking() {
   if (!state.pendingDelete) return;
   await saveBooking({ action: 'delete', id: state.pendingDelete.id });
   setMessage('Booking deleted.', 'success');
-  state.bookings = state.bookings.filter((booking) => String(booking.id) !== String(state.pendingDelete.id));
+  state.bookings = removeById(state.bookings, state.pendingDelete.id);
   renderBoard();
-  await refreshDynamicData();
 }
 
 async function addAdhocRequest() {
@@ -407,10 +401,9 @@ async function addAdhocRequest() {
   el.adhocForm.reset();
   setMessage('Added to adhoc call queue.', 'success');
   if (result.entry) {
-    state.waitlist = [...state.waitlist, result.entry];
+    state.waitlist = upsertById(state.waitlist, result.entry);
     renderAdhocList();
   }
-  await refreshDynamicData();
 }
 
 el.benchFilter.addEventListener('change', (event) => {
@@ -429,6 +422,7 @@ el.saveBooking.addEventListener('click', async () => {
 
 el.cancelBooking.addEventListener('click', () => el.bookingDialog.close());
 el.cancelDelete.addEventListener('click', () => el.deleteDialog.close());
+el.refreshBoard?.addEventListener('click', refreshDynamicData);
 
 window.setInterval(() => {
   if (!state.isSavingBooking && shouldRefresh({
@@ -457,6 +451,7 @@ el.deleteForm.addEventListener('submit', async (event) => {
     el.deleteDialog.close();
   } catch (err) {
     setMessage(`Delete failed: ${err.message}`, 'error');
+    await refreshDynamicData();
   }
 });
 
@@ -466,6 +461,7 @@ el.adhocForm?.addEventListener('submit', async (event) => {
     await addAdhocRequest();
   } catch (err) {
     setMessage(`Could not add adhoc request: ${err.message}`, 'error');
+    await refreshDynamicData();
   }
 });
 

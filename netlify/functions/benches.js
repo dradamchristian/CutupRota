@@ -32,8 +32,8 @@ async function upsertBenchWithActiveFallback(supabase, bench) {
 
   for (const key of keys) {
     const payload = buildBenchPayload(bench, key);
-    const { error } = await supabase.from('benches').upsert(payload, { onConflict: 'id' });
-    if (!error) return;
+    const { data, error } = await supabase.from('benches').upsert(payload, { onConflict: 'id' }).select('*').limit(1).maybeSingle();
+    if (!error) return data;
 
     lastError = error;
     if (!isMissingBenchColumnError(error.message || '')) {
@@ -53,8 +53,8 @@ export async function handler(event) {
 
     if (action === 'upsert') {
       if (!bench?.name) return json(400, { error: 'Bench name required' });
-      await upsertBenchWithActiveFallback(supabase, bench);
-      return json(200, { ok: true });
+      const savedBench = await upsertBenchWithActiveFallback(supabase, bench);
+      return json(200, { ok: true, bench: savedBench });
     }
 
     if (action === 'delete') {
@@ -62,9 +62,10 @@ export async function handler(event) {
       if (bookingErr) throw bookingErr;
       if (related.length > 0) return json(409, { error: 'Cannot delete bench with bookings.' });
 
-      const { error } = await supabase.from('benches').delete().eq('id', id);
+      const { data, error } = await supabase.from('benches').delete().eq('id', id).select('*').limit(1).maybeSingle();
       if (error) throw error;
-      return json(200, { ok: true });
+      if (!data) return json(404, { error: 'Bench not found.' });
+      return json(200, { ok: true, id: data.id, bench: data });
     }
 
     return json(400, { error: 'Unknown action' });

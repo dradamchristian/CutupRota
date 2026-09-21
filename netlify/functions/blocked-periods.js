@@ -52,7 +52,7 @@ async function upsertBlockedWithFallback(supabase, blocked) {
     if (tried.has(key)) continue;
     tried.add(key);
 
-    const { error } = await supabase.from('blocked_periods').upsert(candidate, { onConflict: 'id' });
+    const { data, error } = await supabase.from('blocked_periods').upsert(candidate, { onConflict: 'id' }).select('*').limit(1).maybeSingle();
     if (!error) {
       const keys = Object.keys(candidate);
       preferredBlockedPayload = (input) => {
@@ -64,7 +64,7 @@ async function upsertBlockedWithFallback(supabase, blocked) {
         if (normalized.id != null) result.id = normalized.id;
         return result;
       };
-      return;
+      return data;
     }
 
     const combined = `${error.message || ''} ${error.details || ''}`.toLowerCase();
@@ -87,14 +87,15 @@ export async function handler(event) {
         return json(400, { error: 'start_time and end_time are required' });
       }
 
-      await upsertBlockedWithFallback(supabase, blocked);
-      return json(200, { ok: true });
+      const savedBlocked = await upsertBlockedWithFallback(supabase, blocked);
+      return json(200, { ok: true, blocked: savedBlocked });
     }
 
     if (action === 'delete') {
-      const { error } = await supabase.from('blocked_periods').delete().eq('id', id);
+      const { data, error } = await supabase.from('blocked_periods').delete().eq('id', id).select('*').limit(1).maybeSingle();
       if (error) throw error;
-      return json(200, { ok: true });
+      if (!data) return json(404, { error: 'Blocked period not found.' });
+      return json(200, { ok: true, id: data.id, blocked: data });
     }
 
     return json(400, { error: 'Unknown action' });

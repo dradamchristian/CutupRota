@@ -7,6 +7,7 @@ import { normalizeBookings } from './lib/bookings.js';
 import { normalizeBenches } from './lib/benches.js';
 import { normalizeBlockedPeriods } from './lib/blockedPeriods.js';
 import { shouldRefresh } from './lib/refreshPolicy.js';
+import { removeByIds } from './lib/stateUpdates.js';
 
 const LAB_REFRESH_INTERVAL_MS = 60_000;
 let isLoadingData = false;
@@ -19,12 +20,15 @@ const el = {
   queue: document.getElementById('labQueue'),
   completeQueueSelected: document.getElementById('completeQueueSelected'),
   loading: document.getElementById('labLoading'),
-  error: document.getElementById('labError')
+  error: document.getElementById('labError'),
+  refresh: document.getElementById('refreshLab')
 };
 
 const params = new URLSearchParams(window.location.search);
 let selectedBench = params.get('bench') || 'all';
 const selectedQueueIds = new Set();
+let queueEntries = [];
+let reconciliationTimer = null;
 
 function renderBenchFilter(benches) {
   const selectionIsAvailable = selectedBench === 'all'
@@ -89,10 +93,13 @@ async function completeSelectedQueueItems() {
   }
 
   try {
-    await Promise.all(ids.map((id) => saveWaitlist({ action: 'complete', id })));
-    ids.forEach((id) => el.queue.querySelector(`[data-row-id="${CSS.escape(id)}"]`)?.remove());
+    const results = await Promise.all(ids.map((id) => saveWaitlist({ action: 'complete', id })));
+    const completedIds = results.map((result) => result.id ?? result.entry?.id).filter((id) => id != null);
+    queueEntries = removeByIds(queueEntries, completedIds);
     selectedQueueIds.clear();
-    await loadLabView();
+    renderQueue(queueEntries);
+    clearTimeout(reconciliationTimer);
+    reconciliationTimer = setTimeout(loadLabView, 5_000);
   } finally {
     if (el.completeQueueSelected) el.completeQueueSelected.textContent = 'Mark ticked complete';
   }
@@ -140,7 +147,7 @@ async function loadLabView() {
 
     const bookings = normalizeBookings(bookingsRes);
     const blockedPeriods = normalizeBlockedPeriods(blockedRes.data);
-    const waitlist = waitlistRes.error ? [] : (waitlistRes.data || []);
+    queueEntries = waitlistRes.error ? [] : (waitlistRes.data || []);
     const benches = selectedBench === 'all'
       ? activeBenches
       : activeBenches.filter((bench) => String(bench.id) === selectedBench);
@@ -177,7 +184,7 @@ async function loadLabView() {
 
       return `<article class="day-card panel"><h2>${fmtDateLong(d)}</h2><div class="bench-grid">${cols}</div></article>`;
     }).join('');
-    renderQueue(waitlist);
+    renderQueue(queueEntries);
     lastSuccessfulLoad = Date.now();
 
     el.error.classList.add('hidden');
@@ -222,6 +229,8 @@ el.benchFilter?.addEventListener('change', () => {
   loadLabView();
 });
 
+el.refresh?.addEventListener('click', loadLabView);
+
 el.completeQueueSelected?.addEventListener('click', async () => {
   try {
     await completeSelectedQueueItems();
@@ -229,5 +238,6 @@ el.completeQueueSelected?.addEventListener('click', async () => {
     el.error.className = 'message error';
     el.error.textContent = `Could not update queue: ${err.message}`;
     el.error.classList.remove('hidden');
+    await loadLabView();
   }
 });
