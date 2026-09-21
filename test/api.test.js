@@ -1,7 +1,25 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { saveBooking } from '../src/lib/api.js';
+import { loadBookings, saveBooking } from '../src/lib/api.js';
+
+test('passes booking date boundaries and bench filter to the read API', async (t) => {
+  const originalFetch = globalThis.fetch;
+  t.after(() => { globalThis.fetch = originalFetch; });
+  let payload;
+  globalThis.fetch = async (_url, options) => {
+    payload = JSON.parse(options.body);
+    return new Response(JSON.stringify({ ok: true, bookings: [] }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' }
+    });
+  };
+
+  await loadBookings({ from: '2026-09-01', to: '2026-09-03', bench_id: 'bench-1' });
+  assert.deepEqual(payload, {
+    action: 'list', from: '2026-09-01', to: '2026-09-03', bench_id: 'bench-1'
+  });
+});
 
 test('does not retry a booking after an ambiguous transport failure', async (t) => {
   const originalFetch = globalThis.fetch;

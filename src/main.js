@@ -115,8 +115,16 @@ async function refreshDynamicData() {
   el.error.classList.add('hidden');
 
   try {
+    const visibleDates = buildVisibleDates({
+      daysAhead: Number(state.settings.booking_days_ahead || 5),
+      weekendsEnabled: Boolean(state.settings.weekends_enabled)
+    });
+    const bookingRange = {
+      from: formatDateKey(visibleDates[0]),
+      to: formatDateKey(visibleDates.at(-1))
+    };
     const [bookingsRes, waitlistRes] = await Promise.all([
-      loadBookings(),
+      loadBookings(bookingRange),
       supabase
         .from('bench_waitlist')
         .select('*')

@@ -89,25 +89,58 @@ async function findOverlappingBooking(supabase, booking) {
   return data;
 }
 
-async function listCurrentBookings(supabase) {
-  // PostgREST projects commonly cap a response at 1,000 rows. Reading the
-  // entire table in ascending order eventually returns only old bookings, so
-  // newly-created rows appear briefly (from the create response) and then
-  // vanish on the next board refresh. Past bookings are not used by either
-  // board, and pagination keeps this correct even with a busy future rota.
-  const bookingDate = toPostgresDate(new Date());
-  // Keep pages below even conservatively configured Supabase row limits.
-  const pageSize = 100;
+export const MAX_BOOKING_RANGE_DAYS = 31;
+const BOOKING_READ_FIELDS = 'id, bench_id, booking_date, start_time, end_time, booked_by, specialties, notes';
+
+function parseExactDate(value) {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
+  const date = new Date(`${value}T00:00:00.000Z`);
+  return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value ? date : null;
+}
+
+export function validateBookingListFilters({ from, to, bench_id: benchId } = {}) {
+  const fromDate = parseExactDate(from);
+  const toDate = parseExactDate(to);
+  if (!fromDate || !toDate) {
+    return { error: '`from` and `to` are required dates in YYYY-MM-DD format.' };
+  }
+
+  const inclusiveDays = Math.floor((toDate - fromDate) / 86_400_000) + 1;
+  if (inclusiveDays < 1) return { error: '`to` must be on or after `from`.' };
+  if (inclusiveDays > MAX_BOOKING_RANGE_DAYS) {
+    return { error: `Booking date range cannot exceed ${MAX_BOOKING_RANGE_DAYS} days.` };
+  }
+
+  if (benchId !== undefined && (typeof benchId !== 'string' && typeof benchId !== 'number')) {
+    return { error: '`bench_id` must be a valid bench identifier.' };
+  }
+  const normalizedBenchId = benchId === undefined ? undefined : String(benchId).trim();
+  if (normalizedBenchId !== undefined
+    && (!normalizedBenchId || normalizedBenchId.length > 128 || !/^[A-Za-z0-9_-]+$/.test(normalizedBenchId))) {
+    return { error: '`bench_id` must be a valid bench identifier.' };
+  }
+
+  return { filters: { from, to, benchId: normalizedBenchId } };
+}
+
+export async function listBookings(supabase, { from, to, benchId }) {
+  // Match the usual configured PostgREST response limit while retaining
+  // pagination for exceptionally busy benches within the bounded window.
+  const pageSize = 1000;
   const bookings = [];
 
-  for (let from = 0; ; from += pageSize) {
-    const { data, error } = await supabase
+  for (let offset = 0; ; offset += pageSize) {
+    let query = supabase
       .from('bookings')
-      .select('*')
-      .gte('booking_date', bookingDate)
+      .select(BOOKING_READ_FIELDS)
+      .gte('booking_date', from)
+      .lte('booking_date', to);
+    if (benchId !== undefined) query = query.eq('bench_id', benchId);
+
+    const { data, error } = await query
       .order('booking_date', { ascending: true })
       .order('start_time', { ascending: true })
-      .range(from, from + pageSize - 1);
+      .range(offset, offset + pageSize - 1);
 
     if (error) throw error;
     const page = data || [];
@@ -131,7 +164,7 @@ async function insertBookingWithFallback(supabase, payload) {
 
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     const rawInsertStart = Date.now();
-    const { data, error } = await supabase.from('bookings').insert(insertPayload).select('*');
+    const { data, error } = await supabase.from('bookings').insert(insertPayload).select(BOOKING_READ_FIELDS);
     const rawInsertDurationMs = Date.now() - rawInsertStart;
     const rowCount = Array.isArray(data) ? data.length : 0;
 
@@ -182,8 +215,7 @@ export async function handler(event) {
 
   try {
     const parseValidationStart = Date.now();
-    const { action, booking, id } = parseBody(event);
-    const supabase = getAdminClient();
+    const { action, booking, id, from, to, bench_id: benchId } = parseBody(event);
     const parseValidationDurationMs = Date.now() - parseValidationStart;
 
     console.log('[bookings] parse/validation duration', {
@@ -192,9 +224,14 @@ export async function handler(event) {
     });
 
     if (action === 'list') {
-      const bookings = await listCurrentBookings(supabase);
+      const validation = validateBookingListFilters({ from, to, bench_id: benchId });
+      if (validation.error) return json(400, { error: validation.error });
+      const supabase = getAdminClient();
+      const bookings = await listBookings(supabase, validation.filters);
       return json(200, { ok: true, bookings });
     }
+
+    const supabase = getAdminClient();
 
     if (action === 'create') {
       const createPathStart = Date.now();
