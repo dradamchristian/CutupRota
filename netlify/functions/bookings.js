@@ -89,33 +89,6 @@ async function findOverlappingBooking(supabase, booking) {
   return data;
 }
 
-async function listCurrentBookings(supabase) {
-  // PostgREST projects commonly cap a response at 1,000 rows. Reading the
-  // entire table in ascending order eventually returns only old bookings, so
-  // newly-created rows appear briefly (from the create response) and then
-  // vanish on the next board refresh. Past bookings are not used by either
-  // board, and pagination keeps this correct even with a busy future rota.
-  const bookingDate = toPostgresDate(new Date());
-  // Keep pages below even conservatively configured Supabase row limits.
-  const pageSize = 100;
-  const bookings = [];
-
-  for (let from = 0; ; from += pageSize) {
-    const { data, error } = await supabase
-      .from('bookings')
-      .select('*')
-      .gte('booking_date', bookingDate)
-      .order('booking_date', { ascending: true })
-      .order('start_time', { ascending: true })
-      .range(from, from + pageSize - 1);
-
-    if (error) throw error;
-    const page = data || [];
-    bookings.push(...page);
-    if (page.length < pageSize) return bookings;
-  }
-}
-
 async function insertBookingWithFallback(supabase, payload) {
   const transientCodes = new Set(['40001', '40P01', '53300', '57P03']);
   const maxAttempts = 3;
@@ -190,11 +163,6 @@ export async function handler(event) {
       action: action || null,
       duration_ms: parseValidationDurationMs
     });
-
-    if (action === 'list') {
-      const bookings = await listCurrentBookings(supabase);
-      return json(200, { ok: true, bookings });
-    }
 
     if (action === 'create') {
       const createPathStart = Date.now();

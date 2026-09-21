@@ -79,6 +79,15 @@ paginates the result. Supabase/PostgREST normally limits a response to 1,000 row
 without the date filter, a sufficiently large booking history can fill the response
 with old rows and make newly-created bookings disappear on the next refresh.
 
+## Booking board cache freshness
+
+Booking-board reads use the GET-only `booking-board` Netlify Function with the
+requested `from`, `to`, and optional `bench` values in the URL. By default the UI
+requests today through one year from today. Successful reads may be cached in the
+browser for **5 seconds** and in Netlify's shared CDN cache for **20 seconds**, with
+a further **30-second stale-while-revalidate** window. Create and delete requests
+continue to use POST and return `Cache-Control: no-store`.
+
 ## Run locally
 
 ```bash

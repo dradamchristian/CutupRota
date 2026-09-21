@@ -65,6 +65,33 @@ async function netlifyCall(path, payload) {
   throw lastError || new Error('Request failed');
 }
 
+async function netlifyGet(path, params) {
+  const query = new URLSearchParams(params).toString();
+  const bases = getFunctionBases();
+  let lastError = null;
+
+  for (const base of bases) {
+    const url = `${base}/${path}?${query}`;
+    try {
+      const response = await fetch(url, { method: 'GET', headers: JSON_HEADERS });
+      const data = await response.json().catch(() => ({}));
+      if (response.ok) return data;
+
+      const error = new Error(data.error || `Request failed: ${response.status}`);
+      if (response.status === 404 && base !== bases.at(-1)) {
+        lastError = error;
+        continue;
+      }
+      throw error;
+    } catch (error) {
+      lastError = error;
+      throw error;
+    }
+  }
+
+  throw lastError || new Error('Request failed');
+}
+
 export function verifyAdminPin(pin) {
   return netlifyCall('verify-admin-pin', { pin });
 }
@@ -89,8 +116,15 @@ export function saveBooking(payload) {
   return netlifyCall('bookings', payload);
 }
 
-export async function loadBookings() {
-  const response = await netlifyCall('bookings', { action: 'list' });
+export async function loadBookings({ from, to, bench, benchId } = {}) {
+  const start = from || new Date().toISOString().slice(0, 10);
+  const endDate = new Date(`${start}T00:00:00Z`);
+  endDate.setUTCFullYear(endDate.getUTCFullYear() + 1);
+  const response = await netlifyGet('booking-board', {
+    from: start,
+    to: to || endDate.toISOString().slice(0, 10),
+    ...((bench || benchId) ? { bench: bench || benchId } : {})
+  });
   return response.bookings || [];
 }
 
