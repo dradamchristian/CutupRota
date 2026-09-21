@@ -6,6 +6,7 @@ import { escapeHtml, fmtDateLabel, fmtTime } from './lib/format.js';
 import { normalizeBookings } from './lib/bookings.js';
 import { normalizeBenches } from './lib/benches.js';
 import { normalizeBlockedPeriods } from './lib/blockedPeriods.js';
+import { shouldRefresh } from './lib/refreshPolicy.js';
 
 const el = {
   board: document.getElementById('board'),
@@ -42,8 +43,9 @@ const state = {
   isSavingBooking: false
 };
 
-const BOARD_REFRESH_INTERVAL_MS = 15_000;
+const BOARD_REFRESH_INTERVAL_MS = 120_000;
 let isLoadingData = false;
+let lastSuccessfulLoad = 0;
 
 function setMessage(text, type = 'info') {
   if (!text) {
@@ -90,18 +92,31 @@ function isMissingWaitlistTable(error) {
   return message.includes('does not exist') || message.includes('could not find the table');
 }
 
-async function loadAllData() {
+async function loadConfiguration() {
+  const [settingsRes, benchesRes, blockedRes] = await Promise.all([
+    supabase.from('app_settings').select('*').limit(1).single(),
+    supabase.from('benches').select('*').order('display_order', { ascending: true }),
+    supabase.from('blocked_periods').select('*').order('start_time', { ascending: true })
+  ]);
+
+  const error = [settingsRes, benchesRes, blockedRes].find((result) => result.error)?.error;
+  if (error) throw error;
+
+  state.settings = settingsRes.data;
+  state.benches = normalizeBenches(benchesRes.data).filter((bench) => bench.active);
+  state.blockedPeriods = normalizeBlockedPeriods(blockedRes.data);
+  renderBenchFilter();
+}
+
+async function refreshDynamicData() {
   if (isLoadingData) return;
   isLoadingData = true;
   setLoading(true);
   el.error.classList.add('hidden');
 
   try {
-    const [settingsRes, benchesRes, bookingsRes, blockedRes, waitlistRes] = await Promise.all([
-      supabase.from('app_settings').select('*').limit(1).single(),
-      supabase.from('benches').select('*').order('display_order', { ascending: true }),
+    const [bookingsRes, waitlistRes] = await Promise.all([
       loadBookings(),
-      supabase.from('blocked_periods').select('*').order('start_time', { ascending: true }),
       supabase
         .from('bench_waitlist')
         .select('*')
@@ -109,30 +124,34 @@ async function loadAllData() {
         .order('requested_at', { ascending: true })
     ]);
 
-    const errors = [settingsRes, benchesRes, blockedRes]
-      .map((r) => r.error)
-      .filter(Boolean);
-
-    if (errors.length) throw errors[0];
-
-    state.settings = settingsRes.data;
-    state.benches = normalizeBenches(benchesRes.data).filter((b) => b.active);
     state.bookings = normalizeBookings(bookingsRes);
-    state.blockedPeriods = normalizeBlockedPeriods(blockedRes.data);
     state.waitlist = waitlistRes.error ? [] : (waitlistRes.data || []);
 
     if (waitlistRes.error && !isMissingWaitlistTable(waitlistRes.error)) {
       throw waitlistRes.error;
     }
 
-    renderBenchFilter();
     renderAdhocList();
     renderBoard();
+    lastSuccessfulLoad = Date.now();
   } catch (err) {
     el.error.classList.remove('hidden');
     el.error.textContent = `Could not load booking board: ${err.message}`;
   } finally {
     isLoadingData = false;
+    setLoading(false);
+  }
+}
+
+async function bootstrap() {
+  setLoading(true);
+  el.error.classList.add('hidden');
+  try {
+    await loadConfiguration();
+    await refreshDynamicData();
+  } catch (err) {
+    el.error.classList.remove('hidden');
+    el.error.textContent = `Could not load booking board: ${err.message}`;
     setLoading(false);
   }
 }
@@ -320,7 +339,8 @@ async function createBooking(formData) {
   const result = await saveBooking({ action: 'create', booking: payload });
 
   setMessage('Booking created.', 'success');
-  await loadAllData();
+  mergeBookingIntoBoard(result.booking);
+  await refreshDynamicData();
   // Keep the authoritative create result visible even if a stale or
   // misconfigured read response omits the row that was just inserted.
   mergeBookingIntoBoard(result.booking);
@@ -344,7 +364,7 @@ async function handleBookingSave() {
     if (String(err.message || '').toLowerCase().includes('slot was just booked')) {
       // Replace the stale board immediately so the conflicting booking is
       // visible instead of continuing to present the slot as free.
-      await loadAllData();
+      await refreshDynamicData();
       mergeBookingIntoBoard(err.responseData?.conflicting_booking);
     }
     const message = `Booking failed: ${err.message}`;
@@ -359,13 +379,15 @@ async function deleteBooking() {
   if (!state.pendingDelete) return;
   await saveBooking({ action: 'delete', id: state.pendingDelete.id });
   setMessage('Booking deleted.', 'success');
-  await loadAllData();
+  state.bookings = state.bookings.filter((booking) => String(booking.id) !== String(state.pendingDelete.id));
+  renderBoard();
+  await refreshDynamicData();
 }
 
 async function addAdhocRequest() {
   if (!el.adhocForm?.reportValidity()) return;
   const formData = new FormData(el.adhocForm);
-  await saveWaitlist({
+  const result = await saveWaitlist({
     action: 'create',
     entry: {
       requested_by: formData.get('requested_by'),
@@ -376,7 +398,11 @@ async function addAdhocRequest() {
   });
   el.adhocForm.reset();
   setMessage('Added to adhoc call queue.', 'success');
-  await loadAllData();
+  if (result.entry) {
+    state.waitlist = [...state.waitlist, result.entry];
+    renderAdhocList();
+  }
+  await refreshDynamicData();
 }
 
 el.benchFilter.addEventListener('change', (event) => {
@@ -397,13 +423,23 @@ el.cancelBooking.addEventListener('click', () => el.bookingDialog.close());
 el.cancelDelete.addEventListener('click', () => el.deleteDialog.close());
 
 window.setInterval(() => {
-  if (document.visibilityState === 'visible' && !state.isSavingBooking) {
-    loadAllData();
+  if (!state.isSavingBooking && shouldRefresh({
+    visibilityState: document.visibilityState,
+    isLoading: isLoadingData,
+    lastSuccessfulLoad,
+    refreshIntervalMs: BOARD_REFRESH_INTERVAL_MS
+  })) {
+    refreshDynamicData();
   }
 }, BOARD_REFRESH_INTERVAL_MS);
 
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible') loadAllData();
+  if (shouldRefresh({
+    visibilityState: document.visibilityState,
+    isLoading: isLoadingData,
+    lastSuccessfulLoad,
+    refreshIntervalMs: BOARD_REFRESH_INTERVAL_MS
+  })) refreshDynamicData();
 });
 
 el.deleteForm.addEventListener('submit', async (event) => {
@@ -425,4 +461,4 @@ el.adhocForm?.addEventListener('submit', async (event) => {
   }
 });
 
-loadAllData();
+bootstrap();

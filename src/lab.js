@@ -6,6 +6,11 @@ import { loadBookings, saveWaitlist } from './lib/api.js';
 import { normalizeBookings } from './lib/bookings.js';
 import { normalizeBenches } from './lib/benches.js';
 import { normalizeBlockedPeriods } from './lib/blockedPeriods.js';
+import { shouldRefresh } from './lib/refreshPolicy.js';
+
+const LAB_REFRESH_INTERVAL_MS = 60_000;
+let isLoadingData = false;
+let lastSuccessfulLoad = 0;
 
 const el = {
   sub: document.getElementById('labSub'),
@@ -85,6 +90,8 @@ async function completeSelectedQueueItems() {
 
   try {
     await Promise.all(ids.map((id) => saveWaitlist({ action: 'complete', id })));
+    ids.forEach((id) => el.queue.querySelector(`[data-row-id="${CSS.escape(id)}"]`)?.remove());
+    selectedQueueIds.clear();
     await loadLabView();
   } finally {
     if (el.completeQueueSelected) el.completeQueueSelected.textContent = 'Mark ticked complete';
@@ -92,6 +99,8 @@ async function completeSelectedQueueItems() {
 }
 
 async function loadLabView() {
+  if (isLoadingData) return;
+  isLoadingData = true;
   try {
     el.loading.classList.remove('hidden');
     const [settingsRes, benchesRes, bookingsRes, blockedRes, waitlistRes] = await Promise.all([
@@ -130,7 +139,7 @@ async function loadLabView() {
     const selectedBenchName = benches.length === 1 && selectedBench !== 'all'
       ? benches[0].name
       : 'All benches';
-    el.sub.textContent = `${selectedBenchName} • Auto-refresh every 30 seconds`;
+    el.sub.textContent = `${selectedBenchName} • Auto-refresh every 60 seconds`;
 
     el.board.innerHTML = dates.map((d) => {
       const dateKey = formatDateKey(d);
@@ -160,6 +169,7 @@ async function loadLabView() {
       return `<article class="day-card panel"><h2>${fmtDateLong(d)}</h2><div class="bench-grid">${cols}</div></article>`;
     }).join('');
     renderQueue(waitlist);
+    lastSuccessfulLoad = Date.now();
 
     el.error.classList.add('hidden');
   } catch (err) {
@@ -167,12 +177,29 @@ async function loadLabView() {
     el.error.textContent = `Lab view failed to load: ${err.message}`;
     el.error.classList.remove('hidden');
   } finally {
+    isLoadingData = false;
     el.loading.classList.add('hidden');
   }
 }
 
 loadLabView();
-setInterval(loadLabView, 30000);
+setInterval(() => {
+  if (shouldRefresh({
+    visibilityState: document.visibilityState,
+    isLoading: isLoadingData,
+    lastSuccessfulLoad,
+    refreshIntervalMs: LAB_REFRESH_INTERVAL_MS
+  })) loadLabView();
+}, LAB_REFRESH_INTERVAL_MS);
+
+document.addEventListener('visibilitychange', () => {
+  if (shouldRefresh({
+    visibilityState: document.visibilityState,
+    isLoading: isLoadingData,
+    lastSuccessfulLoad,
+    refreshIntervalMs: LAB_REFRESH_INTERVAL_MS
+  })) loadLabView();
+});
 
 el.benchFilter?.addEventListener('change', () => {
   selectedBench = el.benchFilter.value;
