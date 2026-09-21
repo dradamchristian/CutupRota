@@ -10,14 +10,17 @@ export async function handler(event) {
     const { data: existing, error: readErr } = await supabase.from('app_settings').select('id').limit(1).single();
     if (readErr) throw readErr;
 
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from('app_settings')
       .update(payload)
-      .eq('id', existing.id);
+      .eq('id', existing.id)
+      .select('*')
+      .limit(1)
+      .single();
 
     if (error) throw error;
 
-    return json(200, { ok: true });
+    return json(200, { ok: true, settings: data });
   } catch (error) {
     return json(500, { error: error.message || 'Failed to update settings' });
   }

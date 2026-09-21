@@ -9,6 +9,7 @@ import {
 import { escapeHtml } from './lib/format.js';
 import { createBenchPayload, normalizeBenches } from './lib/benches.js';
 import { normalizeBlockedPeriod, normalizeBlockedPeriods } from './lib/blockedPeriods.js';
+import { removeById, upsertById } from './lib/stateUpdates.js';
 
 const el = {
   message: document.getElementById('adminMessage'),
@@ -21,7 +22,8 @@ const el = {
   blockedList: document.getElementById('blockedList'),
   addBench: document.getElementById('addBench'),
   addBlocked: document.getElementById('addBlocked'),
-  deleteHistoricalBookings: document.getElementById('deleteHistoricalBookings')
+  deleteHistoricalBookings: document.getElementById('deleteHistoricalBookings'),
+  refresh: document.getElementById('refreshAdmin')
 };
 
 const state = {
@@ -119,7 +121,7 @@ function renderBenches() {
       const id = parseId(form.dataset.benchId);
       const data = new FormData(form);
       try {
-        await saveBench({
+        const result = await saveBench({
           action: 'upsert',
           bench: createBenchPayload({
             id,
@@ -128,10 +130,13 @@ function renderBenches() {
             _activeKey: state.benches.find((b) => String(b.id) === String(id))?._activeKey || 'active'
           }, data.get('active') === 'on')
         });
+        state.benches = normalizeBenches(upsertById(state.benches, result.bench));
         flash('Bench updated.', 'success');
-        await loadAdminData();
+        renderBenches();
+        renderBlocked();
       } catch (err) {
         flash(`Bench save failed: ${err.message}`, 'error');
+        await loadAdminData();
       }
     });
   });
@@ -139,9 +144,16 @@ function renderBenches() {
   el.benchesList.querySelectorAll('[data-delete-bench]').forEach((button) => {
     button.addEventListener('click', async () => {
       if (!confirm('Delete this bench?')) return;
-      await saveBench({ action: 'delete', id: parseId(button.dataset.deleteBench) });
-      flash('Bench deleted.', 'success');
-      await loadAdminData();
+      try {
+        const result = await saveBench({ action: 'delete', id: parseId(button.dataset.deleteBench) });
+        state.benches = removeById(state.benches, result.id);
+        flash('Bench deleted.', 'success');
+        renderBenches();
+        renderBlocked();
+      } catch (err) {
+        flash(`Bench delete failed: ${err.message}`, 'error');
+        await loadAdminData();
+      }
     });
   });
 }
@@ -175,30 +187,42 @@ function renderBlocked() {
       event.preventDefault();
       const id = parseId(form.dataset.blockId);
       const data = new FormData(form);
-      await saveBlockedPeriod({
-        action: 'upsert',
-        blocked: normalizeBlockedPeriod({
-          id,
-          block_type: data.get('block_type'),
-          block_date: data.get('block_date') || null,
-          weekday: data.get('block_type') === 'weekday' ? 0 : null,
-          bench_id: parseId(data.get('bench_id')),
-          start_time: data.get('start_time'),
-          end_time: data.get('end_time'),
-          reason: data.get('reason') || null
-        })
-      });
-      flash('Blocked period updated.', 'success');
-      await loadAdminData();
+      try {
+        const result = await saveBlockedPeriod({
+          action: 'upsert',
+          blocked: normalizeBlockedPeriod({
+            id,
+            block_type: data.get('block_type'),
+            block_date: data.get('block_date') || null,
+            weekday: data.get('block_type') === 'weekday' ? 0 : null,
+            bench_id: parseId(data.get('bench_id')),
+            start_time: data.get('start_time'),
+            end_time: data.get('end_time'),
+            reason: data.get('reason') || null
+          })
+        });
+        state.blockedPeriods = normalizeBlockedPeriods(upsertById(state.blockedPeriods, result.blocked));
+        flash('Blocked period updated.', 'success');
+        renderBlocked();
+      } catch (err) {
+        flash(`Blocked period save failed: ${err.message}`, 'error');
+        await loadAdminData();
+      }
     });
   });
 
   el.blockedList.querySelectorAll('[data-delete-block]').forEach((button) => {
     button.addEventListener('click', async () => {
       if (!confirm('Delete blocked period?')) return;
-      await saveBlockedPeriod({ action: 'delete', id: parseId(button.dataset.deleteBlock) });
-      flash('Blocked period deleted.', 'success');
-      await loadAdminData();
+      try {
+        const result = await saveBlockedPeriod({ action: 'delete', id: parseId(button.dataset.deleteBlock) });
+        state.blockedPeriods = removeById(state.blockedPeriods, result.id);
+        flash('Blocked period deleted.', 'success');
+        renderBlocked();
+      } catch (err) {
+        flash(`Blocked period delete failed: ${err.message}`, 'error');
+        await loadAdminData();
+      }
     });
   });
 }
@@ -234,17 +258,19 @@ el.settingsForm.addEventListener('submit', async (event) => {
   });
 
   try {
-    await updateSettings(payload);
+    const result = await updateSettings(payload);
+    state.settings = result.settings;
     flash('Settings saved.', 'success');
-    await loadAdminData();
+    renderSettings();
   } catch (err) {
     flash(`Settings save failed: ${err.message}`, 'error');
+    await loadAdminData();
   }
 });
 
 el.addBench.addEventListener('click', async () => {
   try {
-    await saveBench({
+    const result = await saveBench({
       action: 'upsert',
       bench: createBenchPayload({
         name: `Bench ${state.benches.length + 1}`,
@@ -252,16 +278,19 @@ el.addBench.addEventListener('click', async () => {
         _activeKey: state.benches[0]?._activeKey || 'active'
       }, true)
     });
+    state.benches = normalizeBenches(upsertById(state.benches, result.bench));
     flash('Bench added.', 'success');
-    await loadAdminData();
+    renderBenches();
+    renderBlocked();
   } catch (err) {
     flash(`Add bench failed: ${err.message}`, 'error');
+    await loadAdminData();
   }
 });
 
 el.addBlocked.addEventListener('click', async () => {
   try {
-    await saveBlockedPeriod({
+    const result = await saveBlockedPeriod({
       action: 'upsert',
       blocked: normalizeBlockedPeriod({
         block_type: 'weekday',
@@ -273,10 +302,12 @@ el.addBlocked.addEventListener('click', async () => {
         reason: 'Lunch break'
       })
     });
+    state.blockedPeriods = normalizeBlockedPeriods(upsertById(state.blockedPeriods, result.blocked));
     flash('Blocked period added.', 'success');
-    await loadAdminData();
+    renderBlocked();
   } catch (err) {
     flash(`Add blocked period failed: ${err.message}`, 'error');
+    await loadAdminData();
   }
 });
 
@@ -295,5 +326,15 @@ el.deleteHistoricalBookings.addEventListener('click', async () => {
   } finally {
     el.deleteHistoricalBookings.disabled = false;
     el.deleteHistoricalBookings.textContent = 'Delete historical bookings';
+  }
+});
+
+el.refresh?.addEventListener('click', async () => {
+  if (!state.adminPin) return;
+  try {
+    await loadAdminData();
+    flash('Admin data refreshed.', 'success');
+  } catch (err) {
+    flash(`Admin refresh failed: ${err.message}`, 'error');
   }
 });
