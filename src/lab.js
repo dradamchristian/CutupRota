@@ -103,10 +103,30 @@ async function loadLabView() {
   isLoadingData = true;
   try {
     el.loading.classList.remove('hidden');
-    const [settingsRes, benchesRes, bookingsRes, blockedRes, waitlistRes] = await Promise.all([
+    const [settingsRes, benchesRes] = await Promise.all([
       supabase.from('app_settings').select('*').limit(1).single(),
-      supabase.from('benches').select('*').order('display_order', { ascending: true }),
-      loadBookings(),
+      supabase.from('benches').select('*').order('display_order', { ascending: true })
+    ]);
+
+    if (settingsRes.error) throw settingsRes.error;
+    if (benchesRes.error) throw benchesRes.error;
+
+    const settings = settingsRes.data;
+    const activeBenches = normalizeBenches(benchesRes.data).filter((bench) => bench.active);
+    renderBenchFilter(activeBenches);
+    const dates = buildVisibleDates({
+      daysAhead: Math.min(Number(settings.booking_days_ahead || 5), 3),
+      weekendsEnabled: true,
+      startOffset: 0
+    });
+    const bookingFilters = {
+      from: formatDateKey(dates[0]),
+      to: formatDateKey(dates.at(-1)),
+      ...(selectedBench === 'all' ? {} : { bench_id: selectedBench })
+    };
+
+    const [bookingsRes, blockedRes, waitlistRes] = await Promise.all([
+      loadBookings(bookingFilters),
       supabase.from('blocked_periods').select('*'),
       supabase
         .from('bench_waitlist')
@@ -115,26 +135,15 @@ async function loadLabView() {
         .order('requested_at', { ascending: true })
     ]);
 
-    if (settingsRes.error) throw settingsRes.error;
-    if (benchesRes.error) throw benchesRes.error;
     if (blockedRes.error) throw blockedRes.error;
     if (waitlistRes.error && !isMissingWaitlistTable(waitlistRes.error)) throw waitlistRes.error;
 
-    const settings = settingsRes.data;
     const bookings = normalizeBookings(bookingsRes);
     const blockedPeriods = normalizeBlockedPeriods(blockedRes.data);
     const waitlist = waitlistRes.error ? [] : (waitlistRes.data || []);
-    const activeBenches = normalizeBenches(benchesRes.data).filter((bench) => bench.active);
-    renderBenchFilter(activeBenches);
     const benches = selectedBench === 'all'
       ? activeBenches
       : activeBenches.filter((bench) => String(bench.id) === selectedBench);
-
-    const dates = buildVisibleDates({
-      daysAhead: Math.min(Number(settings.booking_days_ahead || 5), 3),
-      weekendsEnabled: true,
-      startOffset: 0
-    });
 
     const selectedBenchName = benches.length === 1 && selectedBench !== 'all'
       ? benches[0].name

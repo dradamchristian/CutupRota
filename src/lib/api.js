@@ -89,8 +89,13 @@ export function saveBooking(payload) {
   return netlifyCall('bookings', payload);
 }
 
-export async function loadBookings() {
-  const response = await netlifyCall('bookings', { action: 'list' });
+export async function loadBookings({ from, to, bench_id } = {}) {
+  const response = await netlifyCall('bookings', {
+    action: 'list',
+    from,
+    to,
+    ...(bench_id === undefined ? {} : { bench_id })
+  });
   return response.bookings || [];
 }
 
