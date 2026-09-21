@@ -1,7 +1,30 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { saveBooking } from '../src/lib/api.js';
+import { loadBookings, saveBooking } from '../src/lib/api.js';
+
+test('loads a stable date range with GET and permits normal HTTP caching', async (t) => {
+  const originalFetch = globalThis.fetch;
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  globalThis.fetch = async (url, options) => {
+    assert.equal(url, '/api/booking-board?from=2026-09-21&to=2026-09-28&bench=bench-1');
+    assert.deepEqual(options, { method: 'GET', headers: { 'Content-Type': 'application/json' } });
+    assert.equal('cache' in options, false);
+    return new Response(JSON.stringify({ bookings: [{ id: 'booking-1' }] }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' }
+    });
+  };
+
+  assert.deepEqual(await loadBookings({
+    from: '2026-09-21',
+    to: '2026-09-28',
+    bench: 'bench-1'
+  }), [{ id: 'booking-1' }]);
+});
 
 test('does not retry a booking after an ambiguous transport failure', async (t) => {
   const originalFetch = globalThis.fetch;
